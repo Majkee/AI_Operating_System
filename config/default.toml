@@ -1,0 +1,68 @@
+# AIOS Configuration
+# Copy to /etc/aios/config.toml for system-wide settings
+# or ~/.config/aios/config.toml for user settings
+
+[api]
+# Your Anthropic API key (required)
+# api_key = "sk-ant-..."
+
+# Model to use
+model = "claude-sonnet-4-20250514"
+
+# Maximum tokens per response
+max_tokens = 4096
+
+[safety]
+# Require confirmation for potentially dangerous commands
+require_confirmation = true
+
+# Commands that are always blocked (regex patterns)
+blocked_patterns = [
+    "rm -rf /",
+    "mkfs\\.",
+    "dd if=.* of=/dev/",
+    ":(){:|:&};:",
+    "> /dev/sda",
+]
+
+# Commands that require explicit confirmation
+dangerous_patterns = [
+    "rm -rf",
+    "chmod 777",
+    "chown",
+    "shutdown",
+    "reboot",
+    "systemctl stop",
+    "apt remove",
+    "apt purge",
+]
+
+[ui]
+# Show technical details (for advanced users)
+show_technical_details = false
+
+# Use colors in output
+use_colors = true
+
+# Show what commands are being run
+show_commands = true
+
+[logging]
+# Enable audit logging
+enabled = true
+
+# Log file location
+path = "/var/log/aios/audit.log"
+
+# Log level: debug, info, warning, error
+level = "info"
+
+[session]
+# Save conversation history
+save_history = true
+
+# History file location
+history_path = "~/.config/aios/history"
+
+# Maximum history entries
+max_history = 1000
