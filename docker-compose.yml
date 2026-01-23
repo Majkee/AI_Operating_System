@@ -1,0 +1,21 @@
+services:
+  aios:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: aios:latest
+    container_name: aios
+    stdin_open: true
+    tty: true
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      # Persist configuration
+      - aios-config:/home/aios/.config/aios
+      # Mount host directory for file operations (optional)
+      - ${HOST_WORKSPACE:-./workspace}:/workspace
+    working_dir: /workspace
+    restart: "no"
+
+volumes:
+  aios-config:

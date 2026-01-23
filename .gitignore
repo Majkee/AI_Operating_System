@@ -59,3 +59,7 @@ build/
 
 # Claude Code
 .claude/
+
+# Workspace (mounted volume)
+workspace/*
+!workspace/.gitkeep
