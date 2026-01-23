@@ -23,8 +23,8 @@ AIOS is a natural language interface for Linux that lets you interact with your 
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/aios.git
-cd aios
+git clone https://github.com/Majkee/AI_Operating_System.git
+cd AI_Operating_System
 
 # Install dependencies
 pip install -e .
@@ -32,6 +32,45 @@ pip install -e .
 # Run setup wizard
 aios --setup
 ```
+
+### Docker Installation (Recommended)
+
+The easiest way to run AIOS is with Docker.
+
+```bash
+# Clone the repository
+git clone https://github.com/Majkee/AI_Operating_System.git
+cd AI_Operating_System
+
+# Create environment file
+cp .env.example .env
+# Edit .env and add your ANTHROPIC_API_KEY
+
+# Build and run with Docker Compose
+docker-compose up --build
+```
+
+#### Docker Commands
+
+```bash
+# Run in detached mode
+docker-compose up -d --build
+
+# Attach to running container
+docker-compose exec aios aios
+
+# Stop the container
+docker-compose down
+
+# Run without Docker Compose
+docker build -t aios .
+docker run -it --rm -e ANTHROPIC_API_KEY="your-key" aios
+```
+
+#### Docker Volumes
+
+- `aios-config`: Persists AIOS configuration between container restarts
+- `workspace/`: Host directory mounted at `/workspace` for file operations
 
 ### Manual Configuration
 
