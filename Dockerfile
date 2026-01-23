@@ -6,16 +6,23 @@ FROM debian:bookworm-slim
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install Python and system dependencies
+# Install Python, sudo, and system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     python3-venv \
+    sudo \
+    curl \
+    wget \
+    git \
+    procps \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Create non-root user for security
-RUN useradd -m -s /bin/bash aios
+# Create non-root user with sudo privileges
+RUN useradd -m -s /bin/bash aios \
+    && echo "aios ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/aios \
+    && chmod 0440 /etc/sudoers.d/aios
 
 # Set working directory
 WORKDIR /app

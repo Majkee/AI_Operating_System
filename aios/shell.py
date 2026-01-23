@@ -349,28 +349,52 @@ class AIOSShell:
                 user_friendly_message="Okay, cancelled."
             )
 
-        # Build command
+        # Check if sudo is available
+        sudo_available = self.executor.check_command_exists("sudo")
+        sudo_prefix = "sudo " if sudo_available else ""
+
+        # Build command based on action
         if action == "install":
-            command = f"sudo apt install -y {package}"
+            # Update package cache first, then install
+            command = f"{sudo_prefix}apt-get update -qq && {sudo_prefix}apt-get install -y {package}"
         elif action == "remove":
-            command = f"sudo apt remove -y {package}"
+            command = f"{sudo_prefix}apt-get remove -y {package}"
         elif action == "update":
-            command = "sudo apt update && sudo apt upgrade -y"
+            command = f"{sudo_prefix}apt-get update && {sudo_prefix}apt-get upgrade -y"
         elif action == "search":
-            command = f"apt search {package}"
+            # Search doesn't need sudo
+            command = f"apt-cache search {package}"
         else:
             return ToolResult(success=False, output="", error="Unknown action")
 
-        # Execute
+        # Execute with extended timeout for package operations
+        self.ui.print_info(f"Running package operation (this may take a moment)...")
         cmd_result = self.executor.execute(command, timeout=300)
 
         self.audit.log_package_operation(action, package, cmd_result.success)
 
+        # Provide helpful error messages
+        if not cmd_result.success:
+            error_msg = cmd_result.stderr or cmd_result.error_message or "Unknown error"
+            if "Permission denied" in error_msg or "not permitted" in error_msg:
+                user_msg = "Permission denied. The system may not allow package installations."
+            elif "Unable to locate package" in error_msg:
+                user_msg = f"Package '{package}' was not found. Check the package name and try again."
+            elif "Could not get lock" in error_msg:
+                user_msg = "Another package manager is running. Please wait and try again."
+            else:
+                user_msg = f"Failed to {action} {package}."
+            return ToolResult(
+                success=False,
+                output=cmd_result.output,
+                error=error_msg,
+                user_friendly_message=user_msg
+            )
+
         return ToolResult(
-            success=cmd_result.success,
+            success=True,
             output=cmd_result.output,
-            error=cmd_result.error_message,
-            user_friendly_message=f"{'Done!' if cmd_result.success else 'Failed'}"
+            user_friendly_message=f"Successfully {action}ed {package}!"
         )
 
     def _handle_ask_clarification(self, params: Dict[str, Any]) -> ToolResult:
