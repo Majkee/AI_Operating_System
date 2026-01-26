@@ -47,6 +47,10 @@ RUN /app/venv/bin/pip install --no-cache-dir -e .
 # Change ownership to non-root user
 RUN chown -R aios:aios /app
 
+# Create config directories with proper ownership
+RUN mkdir -p /home/aios/.config/aios/history \
+    && chown -R aios:aios /home/aios/.config
+
 # Switch to non-root user
 USER aios
 

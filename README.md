@@ -1,162 +1,174 @@
 # AIOS - AI-powered Operating System Interface
 
-AIOS is a natural language interface for Linux that lets you interact with your computer through conversation. Powered by Claude, it translates your requests into system actions, making Linux accessible to everyone.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://www.docker.com/)
+[![Code style: PEP8](https://img.shields.io/badge/code%20style-pep8-green.svg)](https://www.python.org/dev/peps/pep-0008/)
 
-## Features
+**Talk to your Linux system in plain English.** AIOS is a natural language interface powered by Claude that makes Linux accessible to everyone—no command line experience required.
 
-- **Natural Language Interface**: Just tell AIOS what you want to do
-- **File Management**: Find, organize, create, and edit files through conversation
-- **System Information**: Check disk space, memory, running processes
-- **Application Management**: Install, remove, and update software
-- **Safety First**: Built-in guardrails prevent dangerous operations
-- **Non-Technical Friendly**: Designed for users who aren't Linux experts
-
-## Installation
-
-### Prerequisites
-
-- Debian-based Linux (Ubuntu, Debian, Linux Mint, etc.)
-- Python 3.10 or higher
-- An Anthropic API key
-
-### Quick Install
-
-```bash
-# Clone the repository
-git clone https://github.com/Majkee/AI_Operating_System.git
-cd AI_Operating_System
-
-# Install dependencies
-pip install -e .
-
-# Run setup wizard
-aios --setup
+```
+You: Show me what's taking up space on my disk
+AIOS: I found these large directories in your home folder:
+      • Downloads: 12.4 GB (847 files)
+      • .cache: 3.2 GB
+      • Documents/Projects: 2.1 GB
+      Would you like me to help clean up any of these?
 ```
 
-### Docker Installation (Recommended)
+## Why AIOS?
 
-The easiest way to run AIOS is with Docker.
+- **No Learning Curve**: Just describe what you want in plain English
+- **Safe by Design**: Built-in guardrails prevent dangerous operations
+- **Explains Everything**: Understand what's happening on your system
+- **Respects Privacy**: Runs locally, your conversations stay on your machine
+
+## Quick Start
+
+### Using Docker (Recommended)
 
 ```bash
-# Clone the repository
+# Clone and enter the directory
 git clone https://github.com/Majkee/AI_Operating_System.git
 cd AI_Operating_System
 
-# Create environment file
+# Set up your API key
 cp .env.example .env
 # Edit .env and add your ANTHROPIC_API_KEY
 
-# Build and run with Docker Compose
+# Run AIOS
 docker-compose up --build
 ```
 
-#### Docker Commands
+### Using pip
 
 ```bash
-# Run in detached mode
-docker-compose up -d --build
+# Clone and install
+git clone https://github.com/Majkee/AI_Operating_System.git
+cd AI_Operating_System
+pip install -e .
 
-# Attach to running container
-docker-compose exec aios aios
-
-# Stop the container
-docker-compose down
-
-# Run without Docker Compose
-docker build -t aios .
-docker run -it --rm -e ANTHROPIC_API_KEY="your-key" aios
-```
-
-#### Docker Volumes
-
-- `aios-config`: Persists AIOS configuration between container restarts
-- `workspace/`: Host directory mounted at `/workspace` for file operations
-
-### Manual Configuration
-
-Create `~/.config/aios/config.toml`:
-
-```toml
-[api]
-api_key = "your-anthropic-api-key"
-
-[ui]
-show_technical_details = false
-use_colors = true
-```
-
-Or set the environment variable:
-
-```bash
+# Configure
 export ANTHROPIC_API_KEY="your-api-key"
-```
 
-## Usage
-
-### Interactive Mode
-
-```bash
+# Run
 aios
 ```
 
-Then just talk naturally:
+## What Can AIOS Do?
 
+### File Management
 ```
-You: Show me what's in my Documents folder
-AIOS: I found 15 items in your Documents folder...
-
-You: Find all my photos
-AIOS: I found 3 folders with photos...
-
-You: How much disk space do I have?
-AIOS: You have 45.2 GB free of 256 GB (82% available)
-
-You: Install a program to edit images
-AIOS: I recommend GIMP for image editing. Would you like me to install it?
+"Find all my PDF files"
+"Organize my Downloads folder by file type"
+"Show me files I modified today"
+"Create a backup of my Documents folder"
 ```
 
-### Single Command Mode
-
-```bash
-aios "check my disk space"
+### System Information
+```
+"How much disk space do I have?"
+"What's using all my memory?"
+"Show me running processes"
+"Is my system up to date?"
 ```
 
-### Commands
+### Software Management
+```
+"Install VS Code"
+"What programs do I have installed?"
+"Update all my software"
+"Remove applications I don't use"
+```
 
-- `exit` / `quit` - Leave AIOS
-- `help` - Show help
-- `clear` - Clear screen
-- `history` - Show session history
+### Getting Help
+```
+"How do I connect to WiFi?"
+"What's the command to extract a zip file?"
+"Explain what this error means: [paste error]"
+```
 
-## Safety Features
+## Features
 
-AIOS includes multiple safety layers:
+### Safety First
 
-1. **Blocked Commands**: Dangerous system commands are never executed
-2. **Confirmations**: Risky operations require explicit approval
-3. **Backups**: File modifications create automatic backups
-4. **Audit Logging**: All actions are logged for review
+AIOS includes multiple protection layers:
 
-## Configuration
+- **Forbidden Operations**: Catastrophic commands are always blocked
+- **Confirmation Prompts**: Risky operations require your approval
+- **Automatic Backups**: Files are backed up before changes
+- **Audit Logging**: All actions are recorded for review
 
-Configuration files are loaded in this order (later overrides earlier):
+### Beautiful Interface
 
-1. `/etc/aios/config.toml` (system-wide)
-2. `~/.config/aios/config.toml` (user)
-3. Environment variables (`AIOS_*`)
+- Rich, colorful terminal output
+- Progress indicators for long operations
+- Clear, friendly error messages
+- Conversation history with search
 
-### Configuration Options
+### Flexible Configuration
+
+Customize AIOS behavior via `~/.config/aios/config.toml`:
 
 ```toml
 [api]
-api_key = ""                    # Anthropic API key
+model = "claude-sonnet-4-20250514"    # Claude model to use
+
+[ui]
+show_technical_details = false  # Show underlying commands
+use_colors = true               # Colorful output
+
+[safety]
+require_confirmation = true     # Confirm risky operations
+```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `exit` / `quit` | Leave AIOS |
+| `help` | Show help information |
+| `clear` | Clear the screen |
+| `history` | Show conversation history |
+
+## Architecture
+
+```
+aios/
+├── claude/      # AI integration (Claude API client, tool definitions)
+├── executor/    # Safe command execution (sandboxing, file operations)
+├── safety/      # Security (guardrails, audit logging)
+├── context/     # State management (system info, session tracking)
+└── ui/          # Interface (terminal rendering, user prompts)
+```
+
+## Requirements
+
+- **OS**: Debian-based Linux (Ubuntu, Debian, Linux Mint, etc.)
+- **Python**: 3.10 or higher
+- **API Key**: [Anthropic API key](https://console.anthropic.com/)
+
+## Configuration
+
+Configuration is loaded from (in order of priority):
+
+1. Environment variables (`ANTHROPIC_API_KEY`, `AIOS_*`)
+2. User config: `~/.config/aios/config.toml`
+3. System config: `/etc/aios/config.toml`
+4. Default config (bundled)
+
+### Full Configuration Reference
+
+```toml
+[api]
+api_key = ""                    # Anthropic API key (prefer env var)
 model = "claude-sonnet-4-20250514"     # Model to use
 max_tokens = 4096               # Max response tokens
 
 [safety]
 require_confirmation = true     # Confirm dangerous actions
-blocked_patterns = [...]        # Regex patterns to block
-dangerous_patterns = [...]      # Patterns requiring confirmation
+# blocked_patterns = [...]      # Custom patterns to block
+# dangerous_patterns = [...]    # Custom patterns requiring confirmation
 
 [ui]
 show_technical_details = false  # Show commands being run
@@ -173,59 +185,79 @@ save_history = true             # Save conversation history
 max_history = 1000              # Maximum history entries
 ```
 
-## Development
+## Docker Usage
 
-### Project Structure
-
-```
-aios/
-├── aios/
-│   ├── __init__.py
-│   ├── main.py           # Entry point
-│   ├── shell.py          # Main interactive loop
-│   ├── config.py         # Configuration management
-│   ├── claude/           # Claude API integration
-│   │   ├── client.py     # API client
-│   │   └── tools.py      # Tool definitions
-│   ├── executor/         # Command execution
-│   │   ├── sandbox.py    # Sandboxed execution
-│   │   └── files.py      # File operations
-│   ├── context/          # Context management
-│   │   ├── system.py     # System state
-│   │   └── session.py    # Session management
-│   ├── safety/           # Safety features
-│   │   ├── guardrails.py # Command filtering
-│   │   └── audit.py      # Audit logging
-│   └── ui/               # User interface
-│       ├── terminal.py   # Rich terminal output
-│       └── prompts.py    # User prompts
-├── config/
-│   └── default.toml      # Default configuration
-├── tests/
-├── setup.py
-└── requirements.txt
-```
-
-### Running Tests
+### Basic Commands
 
 ```bash
+# Start AIOS
+docker-compose up --build
+
+# Run in background
+docker-compose up -d --build
+
+# Connect to running instance
+docker-compose exec aios aios
+
+# Stop AIOS
+docker-compose down
+
+# View logs
+docker-compose logs -f
+```
+
+### Volumes
+
+- `aios-config`: Persists your configuration
+- `./workspace`: Host directory mounted at `/workspace` for file operations
+
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+### Quick Start for Contributors
+
+```bash
+# Fork and clone
+git clone https://github.com/YOUR_USERNAME/AI_Operating_System.git
+cd AI_Operating_System
+
+# Set up development environment
+python -m venv venv
+source venv/bin/activate
+pip install -e ".[dev]"
+
+# Run tests
 pytest tests/
 ```
 
-### Contributing
+## Security
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests
-5. Submit a pull request
+AIOS takes security seriously. See [SECURITY.md](SECURITY.md) for:
+
+- How to report vulnerabilities
+- Security features and limitations
+- Best practices for safe usage
+
+## Roadmap
+
+- [ ] Plugin system for community tools
+- [ ] Web-based interface option
+- [ ] Multi-language support
+- [ ] Voice input integration
+- [ ] Custom command aliases
+- [ ] Improved offline capabilities
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
 - Powered by [Claude](https://anthropic.com) from Anthropic
-- Built with [Rich](https://github.com/Textualize/rich) for beautiful terminal output
-- Uses [prompt-toolkit](https://github.com/prompt-toolkit/python-prompt-toolkit) for input handling
+- Terminal UI by [Rich](https://github.com/Textualize/rich)
+- Input handling by [prompt-toolkit](https://github.com/prompt-toolkit/python-prompt-toolkit)
+
+---
+
+**Made with care for humans who just want their computer to work.**
