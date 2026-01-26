@@ -28,6 +28,17 @@ from .safety.guardrails import SafetyGuard, RiskLevel
 from .safety.audit import AuditLogger, ActionType
 from .ui.terminal import TerminalUI
 from .ui.prompts import ConfirmationPrompt, ConfirmationResult
+from .errors import (
+    ErrorBoundary,
+    ErrorCategory,
+    ErrorSeverity,
+    ErrorContext,
+    AIOSError,
+    APIError,
+    format_error_for_user,
+    safe_execute,
+    ErrorRecovery,
+)
 
 
 class AIOSShell:
@@ -503,15 +514,30 @@ class AIOSShell:
         # Get system context
         system_context = self.system.get_context().to_summary()
 
-        # Send to Claude with progress indicator
+        # Send to Claude with progress indicator and error recovery
         with self.ui.print_thinking() as progress:
             task = progress.add_task("Thinking...", total=None)
 
-            try:
-                response = self.claude.send_message(user_input, system_context)
-            except Exception as e:
-                self.ui.print_error(f"Error communicating with Claude: {str(e)}")
+            # Use retry for API calls (network issues may be transient)
+            def send_to_claude():
+                return self.claude.send_message(user_input, system_context)
+
+            result = ErrorRecovery.retry(
+                send_to_claude,
+                max_attempts=2,
+                on_retry=lambda attempt, exc: self.ui.print_info(
+                    f"Retrying... (attempt {attempt + 1})"
+                )
+            )
+
+            if result.is_err:
+                error_msg = result.error.user_message if result.error else "Unknown error"
+                self.ui.print_error(f"Error communicating with Claude: {error_msg}")
+                if result.error and result.error.suggested_action:
+                    self.ui.print_info(f"Suggestion: {result.error.suggested_action}")
                 return True
+
+            response = result.value
 
         # Process response
         if response.text:
@@ -567,8 +593,30 @@ class AIOSShell:
                     auto_suggest=AutoSuggestFromHistory(),
                 ).strip()
 
-                # Process input
-                self.running = self._handle_user_input(user_input)
+                # Process input with error boundary
+                with ErrorBoundary(
+                    "process_user_input",
+                    show_technical_details=self.config.ui.show_technical_details
+                ) as boundary:
+                    self.running = self._handle_user_input(user_input)
+
+                # Handle any errors that occurred during processing
+                if boundary.has_error:
+                    error_ctx = boundary.error_context
+                    self.ui.print_error(format_error_for_user(error_ctx))
+
+                    # Log the error
+                    self.audit.log(
+                        ActionType.COMMAND,
+                        f"Error: {error_ctx.operation}",
+                        success=False,
+                        error=error_ctx.technical_message
+                    )
+
+                    # If error is not recoverable, stop the loop
+                    if not error_ctx.recoverable:
+                        self.ui.print_error("A critical error occurred. Exiting.")
+                        self.running = False
 
             except KeyboardInterrupt:
                 self.ui.print_info("\nUse 'exit' to quit, or Ctrl+D")
@@ -576,11 +624,6 @@ class AIOSShell:
             except EOFError:
                 self.ui.print_info("\nGoodbye!")
                 break
-            except Exception as e:
-                self.ui.print_error(f"An error occurred: {str(e)}")
-                if self.config.ui.show_technical_details:
-                    import traceback
-                    traceback.print_exc()
 
         # Cleanup
         self.session.end_session()
