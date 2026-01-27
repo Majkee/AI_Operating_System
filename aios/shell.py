@@ -23,6 +23,7 @@ from prompt_toolkit.key_binding import KeyBindings
 from .ui.completions import AIOSCompleter, create_bottom_toolbar
 from .tasks import TaskManager, TaskStatus
 from .tasks.browser import TaskBrowser
+from .code import CodeRunner, CodingRequestDetector
 
 from .config import get_config, ensure_config_dirs
 from .claude.client import ClaudeClient
@@ -90,6 +91,14 @@ class AIOSShell:
         self.executor = CommandExecutor()
         self.streaming_executor = InteractiveExecutor()
         self.task_manager = TaskManager()
+        self.code_runner = CodeRunner(config=getattr(self.config, 'code', None))
+        self._code_detector = CodingRequestDetector(
+            sensitivity=getattr(
+                getattr(self.config, 'code', None),
+                'auto_detect_sensitivity', 'moderate'
+            )
+        )
+        self._code_available: Optional[bool] = None  # Lazy check
         self.files = FileHandler()
         self.system = SystemContextGatherer()
         self.session = SessionManager()
@@ -120,7 +129,10 @@ class AIOSShell:
         # Command history and prompt session
         history_path = Path.home() / ".config" / "aios" / "command_history"
         self.history = FileHistory(str(history_path))
-        self.completer = AIOSCompleter(session_fetcher=self._get_session_ids)
+        self.completer = AIOSCompleter(
+            session_fetcher=self._get_session_ids,
+            code_session_fetcher=self._get_code_session_ids,
+        )
 
         # Key bindings
         kb = KeyBindings()
@@ -264,6 +276,14 @@ class AIOSShell:
         except Exception:
             return []
 
+    def _get_code_session_ids(self) -> list:
+        """Return recent code session IDs for tab completion."""
+        try:
+            sessions = self.code_runner.get_sessions(limit=20)
+            return [s.session_id for s in sessions]
+        except Exception:
+            return []
+
     def _show_plugins(self) -> None:
         """Display loaded plugins."""
         plugins = self.plugin_manager.list_plugins()
@@ -398,6 +418,121 @@ class AIOSShell:
 
         self.ui.console.print()
 
+    def _show_models(self) -> None:
+        """Display available models and current selection."""
+        from .models import AVAILABLE_MODELS, get_model_by_id
+        from rich.table import Table
+
+        self.ui.console.print("\n[bold cyan]Available Models[/bold cyan]\n")
+
+        # Get current model info
+        current_model_id = self.config.api.model
+        current_model_info = get_model_by_id(current_model_id)
+
+        # Create table
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("#", style="dim", width=3)
+        table.add_column("Model", style="bold")
+        table.add_column("Speed", width=10)
+        table.add_column("Cost", width=10)
+        table.add_column("Status", width=12)
+
+        for idx, model in enumerate(AVAILABLE_MODELS, 1):
+            speed_emoji = "⚡" if model.speed == "fast" else "⏱️" if model.speed == "medium" else "🐌"
+            cost_emoji = "💰" if model.cost == "low" else "💵" if model.cost == "medium" else "💸"
+            is_current = model.id == current_model_id
+            status = "[green]● Current[/green]" if is_current else "[dim]Available[/dim]"
+
+            table.add_row(
+                str(idx),
+                model.name,
+                f"{speed_emoji} {model.speed}",
+                f"{cost_emoji} {model.cost}",
+                status
+            )
+
+        self.ui.console.print(table)
+        self.ui.console.print(f"\n[bold]Current model:[/bold] [cyan]{current_model_info.name if current_model_info else current_model_id}[/cyan]")
+        self.ui.console.print(f"[dim]To change model, use: [cyan]model <number>[/cyan] or [cyan]model <model-id>[/cyan][/dim]\n")
+
+    def _change_model(self, model_arg: str) -> None:
+        """Change the current model."""
+        from .models import AVAILABLE_MODELS, get_model_by_id
+        from .config import reset_config
+        if sys.version_info >= (3, 11):
+            import tomllib
+        else:
+            import tomli as tomllib
+        import tomli_w
+
+        if not model_arg:
+            self._show_models()
+            return
+
+        # Try to parse as number first
+        selected_model = None
+        try:
+            model_num = int(model_arg)
+            if 1 <= model_num <= len(AVAILABLE_MODELS):
+                selected_model = AVAILABLE_MODELS[model_num - 1]
+        except ValueError:
+            # Not a number, try as model ID
+            selected_model = get_model_by_id(model_arg)
+            if not selected_model:
+                # Try case-insensitive match
+                model_arg_lower = model_arg.lower()
+                for model in AVAILABLE_MODELS:
+                    if model.id.lower() == model_arg_lower or model.name.lower() == model_arg_lower:
+                        selected_model = model
+                        break
+
+        if not selected_model:
+            self.ui.print_error(f"Invalid model: {model_arg}")
+            self.ui.print_info("Use 'model' to see available models")
+            return
+
+        # Update config file
+        config_file = Path.home() / ".config" / "aios" / "config.toml"
+        config_content = {}
+
+        if config_file.exists():
+            try:
+                with open(config_file, "rb") as f:
+                    config_content = tomllib.load(f)
+            except Exception as e:
+                self.ui.print_error(f"Failed to read config file: {e}")
+                return
+
+        # Update model in config
+        if "api" not in config_content:
+            config_content["api"] = {}
+        config_content["api"]["model"] = selected_model.id
+
+        # Save config
+        try:
+            with open(config_file, "wb") as f:
+                tomli_w.dump(config_content, f)
+        except Exception as e:
+            self.ui.print_error(f"Failed to save config: {e}")
+            return
+
+        # Reload config
+        reset_config()
+        self.config = get_config()
+
+        # Update Claude client model
+        if self.claude:
+            self.claude.model = selected_model.id
+            # Clear conversation history when changing models
+            self.claude.clear_history()
+            self.ui.print_info(f"[green]✓[/green] Model changed to [bold]{selected_model.name}[/bold]")
+            self.ui.print_info("[dim]Conversation history cleared for new model[/dim]")
+        else:
+            self.ui.print_info(f"[green]✓[/green] Model set to [bold]{selected_model.name}[/bold]")
+            self.ui.print_info("[dim]Model will be used when Claude client is initialized[/dim]")
+
+        self.ui.console.print()
+
     def _show_sessions(self) -> None:
         """Display previous sessions."""
         sessions = self.session.list_sessions(limit=10)
@@ -469,15 +604,21 @@ class AIOSShell:
         if not self.claude:
             return
 
-        # Clear current conversation buffer
-        self.claude.conversation.clear()
+        # Clear current conversation history
+        self.claude.clear_history()
 
-        # Add messages to conversation buffer
+        # Add messages to conversation history
         for msg in messages[-20:]:  # Keep last 20 messages for context
             if msg.role == "user":
-                self.claude.conversation.add_user_message(msg.content)
+                self.claude.conversation_history.append({
+                    "role": "user",
+                    "content": msg.content,
+                })
             elif msg.role == "assistant":
-                self.claude.conversation.add_assistant_message(msg.content)
+                self.claude.conversation_history.append({
+                    "role": "assistant",
+                    "content": msg.content,
+                })
 
     def _check_rate_limit(self) -> bool:
         """Check rate limit before API call. Returns True if allowed."""
@@ -1106,6 +1247,171 @@ class AIOSShell:
             user_friendly_message=f"Opened {Path(target).name}" if cmd_result.success else "Couldn't open that"
         )
 
+    # ---- Claude Code integration ----
+
+    def _run_code_task(self, prompt: Optional[str] = None, session_id: Optional[str] = None) -> None:
+        """Launch an interactive Claude Code session."""
+        # Lazy availability check
+        if self._code_available is None:
+            self._code_available = self.code_runner.is_available()
+
+        if not self._code_available:
+            self.ui.print_error("Claude Code is not available.")
+            self.ui.print_info(self.code_runner.get_install_instructions())
+            return
+
+        # Ensure auth mode is chosen
+        self._ensure_code_auth_mode()
+
+        code_cfg = getattr(self.config, 'code', None)
+        cwd = None
+        if code_cfg and code_cfg.default_working_directory:
+            cwd = code_cfg.default_working_directory
+        if cwd is None:
+            cwd = str(Path.home())
+
+        auth_mode = code_cfg.auth_mode if code_cfg else None
+
+        self.ui.console.print()
+        self.ui.print_info("Launching Claude Code...")
+        self.ui.print_info("[dim]You'll return to AIOS when you exit.[/dim]")
+        self.ui.console.print()
+
+        result = self.code_runner.launch_interactive(
+            prompt=prompt,
+            working_directory=cwd,
+            session_id=session_id,
+            auth_mode=auth_mode,
+        )
+
+        self.ui.console.print()
+        if result.success:
+            self.ui.print_success("Claude Code session ended.")
+        else:
+            self.ui.print_error(result.error or "Claude Code session failed.")
+
+        # Audit
+        self.audit.log(
+            ActionType.COMMAND,
+            f"Code session: {(prompt or 'interactive')[:80]}",
+            success=result.success,
+            details={"session_id": session_id},
+        )
+
+    def _ensure_code_auth_mode(self) -> None:
+        """Prompt the user to choose an auth mode if not already set."""
+        code_cfg = getattr(self.config, 'code', None)
+        if code_cfg and code_cfg.auth_mode:
+            return
+
+        self.ui.console.print()
+        self.ui.console.print("[bold cyan]Claude Code Authentication[/bold cyan]")
+        self.ui.console.print()
+        self.ui.console.print("  [cyan]1.[/cyan] API Key — use your ANTHROPIC_API_KEY")
+        self.ui.console.print("  [cyan]2.[/cyan] Subscription — use your paid Claude subscription login")
+        self.ui.console.print()
+
+        try:
+            from prompt_toolkit import prompt as pt_prompt
+            choice = pt_prompt("Choose auth mode (1 or 2) [1]: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            choice = "1"
+
+        auth_mode = "subscription" if choice == "2" else "api_key"
+
+        # Save to user config
+        self._save_code_auth_mode(auth_mode)
+
+        # Update in-memory config
+        if code_cfg:
+            code_cfg.auth_mode = auth_mode
+
+        self.ui.print_success(f"Auth mode set to: {auth_mode}")
+
+    def _save_code_auth_mode(self, auth_mode: str) -> None:
+        """Persist auth_mode to the user config file."""
+        if sys.version_info >= (3, 11):
+            import tomllib
+        else:
+            import tomli as tomllib
+        import tomli_w
+
+        config_file = Path.home() / ".config" / "aios" / "config.toml"
+        config_content: Dict[str, Any] = {}
+
+        if config_file.exists():
+            try:
+                with open(config_file, "rb") as f:
+                    config_content = tomllib.load(f)
+            except Exception:
+                pass
+
+        config_content.setdefault("code", {})["auth_mode"] = auth_mode
+
+        try:
+            config_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(config_file, "wb") as f:
+                tomli_w.dump(config_content, f)
+        except Exception as e:
+            self.ui.print_warning(f"Could not save auth mode to config: {e}")
+
+    def _continue_code_session(self, args: str) -> None:
+        """Continue a previous Claude Code session."""
+        parts = args.split(None, 1)
+        if not parts:
+            self.ui.print_info("Usage: code-continue <session_id> [prompt]")
+            return
+
+        sid = parts[0]
+        prompt = parts[1] if len(parts) > 1 else None
+
+        session = self.code_runner.get_session(sid)
+        if session is None:
+            self.ui.print_error(f"Code session '{sid}' not found.")
+            self.ui.print_info("Use 'code-sessions' to list available sessions.")
+            return
+
+        self.ui.print_info(f"Resuming code session: {sid}")
+        self._run_code_task(prompt=prompt, session_id=sid)
+
+    def _show_code_sessions(self) -> None:
+        """Display previous Claude Code sessions."""
+        sessions = self.code_runner.get_sessions(limit=20)
+
+        if not sessions:
+            self.ui.print_info("No previous code sessions found.")
+            self.ui.print_info("Use 'code <task>' to start a coding session.")
+            return
+
+        from datetime import datetime
+        from rich.table import Table
+        from rich.box import ROUNDED
+
+        table = Table(title="Claude Code Sessions", box=ROUNDED)
+        table.add_column("ID", style="cyan", no_wrap=True)
+        table.add_column("Date", style="dim")
+        table.add_column("Task", max_width=40)
+        table.add_column("Directory", style="dim", max_width=30)
+
+        for sess in sessions:
+            try:
+                dt = datetime.fromtimestamp(sess.created_at)
+                formatted_date = dt.strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                formatted_date = "?"
+
+            table.add_row(
+                sess.session_id[:12],
+                formatted_date,
+                sess.prompt_summary[:40],
+                sess.working_directory,
+            )
+
+        self.ui.console.print()
+        self.ui.console.print(table)
+        self.ui.console.print()
+        self.ui.print_info("Use 'code-continue <id> <prompt>' to resume a session.")
+
     def _process_tool_calls(self, tool_calls: list) -> list:
         """Process tool calls and return results."""
         results = []
@@ -1191,12 +1497,52 @@ class AIOSShell:
             TaskBrowser(self.task_manager, self.ui.console).show()
             return True
 
+        if lower_input.startswith("model ") or lower_input.startswith("/model "):
+            model_arg = user_input.split(" ", 1)[1].strip() if " " in user_input else ""
+            self._change_model(model_arg)
+            return True
+
+        if lower_input in ("model", "/model"):
+            self._show_models()
+            return True
+
         if lower_input.startswith("resume ") or lower_input.startswith("/resume "):
             session_id = user_input.split(" ", 1)[1].strip()
             self._resume_session(session_id)
             return True
 
+        # Claude Code commands — order matters: code-sessions and code-continue before code
+        if lower_input in ("code-sessions", "/code-sessions"):
+            self._show_code_sessions()
+            return True
+
+        if lower_input.startswith("code-continue ") or lower_input.startswith("/code-continue "):
+            args = user_input.split(" ", 1)[1].strip()
+            self._continue_code_session(args)
+            return True
+
+        if lower_input.startswith("code ") or lower_input.startswith("/code "):
+            prompt = user_input.split(" ", 1)[1].strip()
+            if prompt:
+                self._run_code_task(prompt=prompt)
+            else:
+                self._run_code_task()
+            return True
+
+        if lower_input in ("code", "/code"):
+            self._run_code_task()
+            return True
+
         if not user_input.strip():
+            return True
+
+        # Auto-detect coding requests
+        code_cfg = getattr(self.config, 'code', None)
+        if (code_cfg and code_cfg.enabled and code_cfg.auto_detect
+                and self._code_detector.is_coding_request(user_input)):
+            self.ui.print_info("This looks like a coding task. Routing to Claude Code...")
+            self.ui.print_info("[dim]Tip: Use 'code' for explicit mode, or set auto_detect = false in config.[/dim]")
+            self._run_code_task(prompt=user_input)
             return True
 
         # Check rate limit before making API call
@@ -1284,12 +1630,44 @@ class AIOSShell:
         Returns:
             Exit code (0 for success)
         """
+        # Check if this is first login and run setup wizard if needed
+        from .config import is_first_login
+        from .main import run_setup
+        
+        if is_first_login():
+            self.ui.console.print("\n[bold yellow]Welcome to AIOS![/bold yellow]")
+            self.ui.console.print("It looks like this is your first time using AIOS.")
+            self.ui.console.print("Let's run the setup wizard to configure your system.\n")
+            
+            try:
+                from prompt_toolkit import prompt
+                run_wizard_input = prompt("Would you like to run the setup wizard now? (y/n) [y]: ").strip().lower()
+                run_wizard = run_wizard_input in ('', 'y', 'yes')
+                if run_wizard:
+                    # Reset config to pick up any changes
+                    from .config import reset_config
+                    reset_config()
+                    
+                    setup_result = run_setup()
+                    if setup_result != 0:
+                        return setup_result
+                    
+                    # Reload config after setup
+                    reset_config()
+                    self.config = get_config()
+                else:
+                    self.ui.console.print("\n[yellow]You can run the setup wizard later with: [cyan]aios --setup[/cyan][/yellow]")
+                    self.ui.console.print("[yellow]Or configure manually in [cyan]~/.config/aios/config.toml[/cyan][/yellow]\n")
+            except (KeyboardInterrupt, EOFError):
+                self.ui.console.print("\n[yellow]Setup cancelled. You can run it later with: [cyan]aios --setup[/cyan][/yellow]\n")
+        
         # Initialize Claude client
         try:
             self.claude = ClaudeClient(self.tool_handler)
         except ValueError as e:
             self.ui.print_error(str(e))
             self.ui.print_info("Please set ANTHROPIC_API_KEY or add it to your config file.")
+            self.ui.print_info("You can run the setup wizard with: [cyan]aios --setup[/cyan]")
             return 1
 
         # Start session

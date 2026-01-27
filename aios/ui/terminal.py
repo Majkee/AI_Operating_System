@@ -391,6 +391,18 @@ Just talk to me naturally! Here are some things you can ask:
 - **sessions** - List previous sessions
 - **resume <id>** - Resume a previous session
 
+## Coding Tasks
+
+- **code** - Launch Claude Code interactive session
+- **code <task>** - Launch Claude Code with an initial prompt
+- **code-continue <id>** - Resume a previous code session
+- **code-sessions** - List previous code sessions
+
+Examples:
+- "code" (opens interactive Claude Code)
+- "code build a REST API with Flask"
+- "code-continue abc123"
+
 ## Recipes
 
 Say trigger phrases to run pre-built workflows:

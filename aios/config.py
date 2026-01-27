@@ -82,6 +82,29 @@ class ExecutorConfig(BaseModel):
     max_timeout: int = Field(default=3600, description="Maximum allowed timeout in seconds")
 
 
+class CodeConfig(BaseModel):
+    """Claude Code integration configuration."""
+    enabled: bool = Field(default=True, description="Enable Claude Code integration")
+    auto_detect: bool = Field(default=True, description="Auto-detect coding requests")
+    auto_detect_sensitivity: str = Field(
+        default="moderate",
+        description="Detection sensitivity: high, moderate, low"
+    )
+    allowed_tools: Optional[list[str]] = Field(
+        default=None,
+        description="Restrict Claude Code tools (None = all)"
+    )
+    max_turns: int = Field(default=50, description="Max agentic turns per code session")
+    default_working_directory: Optional[str] = Field(
+        default=None,
+        description="Default CWD for code tasks"
+    )
+    auth_mode: Optional[str] = Field(
+        default=None,
+        description="Auth mode: 'api_key' or 'subscription' (None = prompt on first use)"
+    )
+
+
 class AIOSConfig(BaseModel):
     """Main AIOS configuration."""
     api: APIConfig = Field(default_factory=APIConfig)
@@ -90,6 +113,7 @@ class AIOSConfig(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     session: SessionConfig = Field(default_factory=SessionConfig)
     executor: ExecutorConfig = Field(default_factory=ExecutorConfig)
+    code: CodeConfig = Field(default_factory=CodeConfig)
 
 
 def get_config_paths() -> list[Path]:
@@ -108,7 +132,13 @@ def get_config_paths() -> list[Path]:
     default_config = Path(__file__).parent / "data" / "default.toml"
     if not default_config.exists():
         # Fallback for Docker / editable / development installs
-        default_config = Path(__file__).parent.parent / "config" / "default.toml"
+        # Try both possible locations
+        fallback1 = Path(__file__).parent.parent / "config" / "default.toml"
+        fallback2 = Path(__file__).parent.parent / "app-config" / "default.toml"
+        if fallback1.exists():
+            default_config = fallback1
+        elif fallback2.exists():
+            default_config = fallback2
     paths.append(default_config)
 
     return paths
@@ -198,3 +228,39 @@ def reset_config() -> None:
     """Reset the global configuration (useful for testing)."""
     global _config
     _config = None
+
+
+def is_first_login() -> bool:
+    """
+    Check if this is the first login by checking if user config exists 
+    and has been explicitly configured via the setup wizard.
+    
+    Returns True if:
+    - User config file doesn't exist, OR
+    - User config file exists but doesn't have setup_complete flag set
+      (meaning user hasn't run the new setup wizard)
+    """
+    user_config_file = Path.home() / ".config" / "aios" / "config.toml"
+    
+    # If user config doesn't exist, it's first login
+    if not user_config_file.exists():
+        return True
+    
+    try:
+        # Read only the user config file (not merged with defaults)
+        with open(user_config_file, "rb") as f:
+            config_data = tomllib.load(f)
+            # Check if setup_complete flag is set
+            # This flag is only set by the new setup wizard
+            setup_complete = config_data.get("setup_complete", False)
+            
+            # If setup_complete flag is set, user has run the wizard
+            if setup_complete:
+                return False
+            
+            # If setup_complete is not set, treat as first login
+            # This handles old config files created before the flag was added
+            return True
+    except Exception:
+        # On any error, assume first login to be safe
+        return True

@@ -148,7 +148,7 @@ prompt_api_key() {
 
     if [ -n "$API_KEY" ]; then
         mkdir -p "$CONFIG_DIR"
-        printf '[api]\napi_key = "%s"\n' "$API_KEY" > "$CONFIG_FILE"
+        printf '[api]\napi_key = "%s"\n\nsetup_complete = true\n' "$API_KEY" > "$CONFIG_FILE"
         chmod 600 "$CONFIG_FILE"
         info "API key saved to $CONFIG_FILE (permissions: 600)."
     else

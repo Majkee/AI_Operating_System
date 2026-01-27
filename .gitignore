@@ -60,6 +60,13 @@ build/
 # Claude Code
 .claude/
 
+# Snap build artifacts
+*.snap
+snap/.snapcraft/
+parts/
+stage/
+prime/
+
 # Workspace (mounted volume)
 workspace/*
 !workspace/.gitkeep

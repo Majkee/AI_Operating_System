@@ -1,0 +1,43 @@
+name: aios
+version: '0.4.0'
+summary: AI-powered Operating System Interface
+description: |
+  Talk to your Linux system in plain English. AIOS is a natural language
+  interface powered by Claude that makes Linux accessible to everyone —
+  no command line experience required.
+
+  Features:
+  - Natural language commands
+  - Built-in safety guardrails
+  - Plugin system for custom tools
+  - Session persistence
+  - Background task management
+
+grade: devel
+confinement: classic
+base: core24
+
+architectures:
+  - build-on: [amd64]
+  - build-on: [arm64]
+
+apps:
+  aios:
+    command: bin/aios
+    environment:
+      PATH: $SNAP/bin:$SNAP/usr/bin:$PATH
+      PYTHONPATH: $SNAP/lib/python3/dist-packages:$SNAP/usr/lib/python3/dist-packages
+
+parts:
+  aios:
+    plugin: python
+    source: .
+    python-packages:
+      - .
+    build-packages:
+      - python3-dev
+      - libffi-dev
+      - libssl-dev
+    stage-packages:
+      - python3
+      - libffi8

@@ -2,8 +2,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/tests-343%20passed-brightgreen.svg)](#testing)
+[![PyPI](https://img.shields.io/pypi/v/aiosys.svg)](https://pypi.org/project/aiosys/)
+[![Docker Hub](https://img.shields.io/docker/v/majkee/aios?label=docker%20hub)](https://hub.docker.com/r/majkee/aios)
+[![Tests](https://img.shields.io/badge/tests-385%20passed-brightgreen.svg)](#testing)
 [![Code style: PEP8](https://img.shields.io/badge/code%20style-pep8-green.svg)](https://www.python.org/dev/peps/pep-0008/)
 
 **Talk to your Linux system in plain English.** AIOS is a natural language interface powered by Claude that makes Linux accessible to everyone -- no command line experience required.
@@ -25,37 +26,53 @@ AIOS: I found these large directories in your home folder:
 - **Extensible**: Plugin system for custom tools and workflows
 - **Respects Privacy**: Runs locally, your conversations stay on your machine
 
-## Quick Start
+## Installation
 
-### Using Docker (Recommended)
+### One-liner (Linux / macOS)
 
 ```bash
-# Clone and enter the directory
-git clone https://github.com/Majkee/AI_Operating_System.git
-cd AI_Operating_System
-
-# Set up your API key
-cp .env.example .env
-# Edit .env and add your ANTHROPIC_API_KEY
-
-# Run AIOS
-docker-compose up --build
+curl -fsSL https://raw.githubusercontent.com/Majkee/AI_Operating_System/master/install.sh | bash
 ```
 
-### Using pip
+Creates a virtual environment at `~/.local/share/aios`, installs from PyPI, and symlinks `aios` into `~/.local/bin`.
+
+### pip (PyPI)
 
 ```bash
-# Clone and install
+pip install aiosys
+aios --setup
+```
+
+### Docker
+
+```bash
+# Docker Hub
+docker pull majkee/aios
+docker run -it -e ANTHROPIC_API_KEY="your-key" majkee/aios
+
+# — or — GitHub Container Registry
+docker pull ghcr.io/majkee/ai_operating_system
+docker run -it -e ANTHROPIC_API_KEY="your-key" ghcr.io/majkee/ai_operating_system
+```
+
+### From source
+
+```bash
 git clone https://github.com/Majkee/AI_Operating_System.git
 cd AI_Operating_System
 pip install -e .
-
-# Configure
 export ANTHROPIC_API_KEY="your-api-key"
-
-# Run
 aios
 ```
+
+### Uninstall
+
+| Method | Command |
+|--------|---------|
+| pip | `pip uninstall aiosys` |
+| One-liner | `rm -rf ~/.local/share/aios ~/.local/bin/aios` |
+| Docker | `docker rmi majkee/aios` |
+| Snap | `sudo snap remove aios` |
 
 ## What Can AIOS Do?
 
@@ -153,6 +170,16 @@ Run commands in the background and manage them interactively:
 - **Toolbar indicators**: bottom toolbar shows running/finished task counts and Ctrl+B hint
 - **Completion notifications**: finished tasks are announced before each prompt
 
+### Claude Code Integration
+
+Launch interactive Claude Code sessions directly from AIOS:
+
+- **Interactive sessions**: type `code` to open a full Claude Code terminal — AIOS hands off stdin/stdout and blocks until you exit
+- **Prompt passthrough**: `code build a REST API` launches Claude Code with an initial prompt
+- **Session resume**: `code-continue <id>` resumes a previous coding session
+- **Auth chooser**: on first use, pick between your API key or your paid Claude subscription
+- **Auto-detection**: coding requests are automatically routed to Claude Code (configurable sensitivity)
+
 ### Sudo, Timeouts & Streaming
 
 Built-in support for privileged and long-running operations:
@@ -220,20 +247,32 @@ require_confirmation = true     # Confirm risky operations
 | `resume <id>` | Resume a previous session |
 | `credentials` / `/credentials` | List stored credentials |
 
+### Claude Code
+
+| Command | Description |
+|---------|-------------|
+| `code` | Launch interactive Claude Code session |
+| `code <task>` | Launch Claude Code with an initial prompt |
+| `code-continue <id>` | Resume a previous code session |
+| `code-sessions` | List previous code sessions |
+
 ## Architecture
 
 ```
 aios/
 ├── claude/        # AI integration (Claude API client, tool definitions)
+├── code/          # Claude Code integration (interactive runner, detector)
 ├── executor/      # Safe command execution (sandboxing, file operations)
 ├── safety/        # Security (guardrails, audit logging)
 ├── context/       # State management (system info, session tracking)
 ├── tasks/         # Background task management (models, manager, browser)
 ├── ui/            # Interface (terminal rendering, user prompts, completions)
+├── data/          # Bundled default configuration
 ├── cache.py       # LRU cache, system info cache, query cache
 ├── ratelimit.py   # Token bucket + sliding window rate limiting
 ├── plugins.py     # Plugin system (loading, tools, recipes)
 ├── credentials.py # Encrypted credential storage
+├── models.py      # Available Claude model definitions
 ├── errors.py      # Error handling and recovery
 ├── config.py      # Configuration management
 ├── shell.py       # Main interactive shell
@@ -307,11 +346,18 @@ max_history = 1000              # Maximum history entries
 [executor]
 default_timeout = 30            # Default command timeout (seconds)
 max_timeout = 3600              # Maximum allowed timeout (1 hour)
+
+[code]
+enabled = true                  # Enable Claude Code integration
+auto_detect = true              # Auto-detect coding requests
+auto_detect_sensitivity = "moderate"  # high, moderate, low
+max_turns = 50                  # Max agentic turns per code session
+# auth_mode = "api_key"         # or "subscription" (prompt on first use if unset)
 ```
 
 ## Testing
 
-AIOS has a comprehensive test suite with 343 tests covering all major systems.
+AIOS has a comprehensive test suite with 385 tests covering all major systems.
 
 ```bash
 # Install test dependencies
@@ -335,6 +381,7 @@ pytest tests/test_ratelimit.py -v
 |--------|-------|
 | Ansible Plugin | 42 |
 | Caching | 30 |
+| Claude Code Integration | 42 |
 | Configuration | 15 |
 | Error Handling | 43 |
 | File Operations | 32 |
@@ -351,7 +398,19 @@ CI runs automatically on every push and PR. See [CI.md](CI.md) for details.
 
 ## Docker Usage
 
-### Basic Commands
+### Pull from registries
+
+```bash
+# Docker Hub
+docker pull majkee/aios
+docker run -it -e ANTHROPIC_API_KEY="your-key" majkee/aios
+
+# GitHub Container Registry
+docker pull ghcr.io/majkee/ai_operating_system
+docker run -it -e ANTHROPIC_API_KEY="your-key" ghcr.io/majkee/ai_operating_system
+```
+
+### Build locally / docker-compose
 
 ```bash
 # Start AIOS
@@ -417,6 +476,8 @@ AIOS takes security seriously. See [SECURITY.md](SECURITY.md) for:
 - [x] CI/CD pipeline
 - [x] Sudo support, configurable timeouts, and live streaming output
 - [x] Background tasks with interactive browser and Ctrl+C-to-background
+- [x] PyPI package, install script, Docker Hub, and Snap distribution
+- [x] Claude Code interactive integration with auth chooser
 - [ ] Web-based interface option
 - [ ] Multi-language support
 - [ ] Voice input integration

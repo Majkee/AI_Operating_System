@@ -1,4 +1,4 @@
-# AIOS v0.4.0 Manual Test Checklist
+# AIOS v0.5.0 Manual Test Checklist
 
 Run these tests to verify all features work end-to-end.
 Mark each test with `[x]` when passed or `[!]` if failed.
@@ -21,7 +21,7 @@ aios
 
 ### General Commands
 
-- [ ] **1.1** Type `help` -- should display help with all sections including Plugin Commands, Session Commands
+- [ ] **1.1** Type `help` -- should display help with all sections including Plugin Commands, Session Commands, Coding Tasks
 - [ ] **1.2** Type `clear` -- screen should clear
 - [ ] **1.3** Type `history` -- should show current session summary (session_id, message counts)
 - [ ] **1.4** Type `exit` -- should print "Goodbye!" and exit cleanly
@@ -46,6 +46,12 @@ aios
 
 - [ ] **1.12** Type `tasks` or `/tasks` -- should show "No background tasks." when no tasks exist
 - [ ] **1.13** Press **Ctrl+B** -- should open task browser (same as `tasks` command), then type `b` to go back
+
+### Model Commands
+
+- [ ] **1.14** Type `model` or `/model` -- should display a table of available models with current selection marked
+- [ ] **1.15** Type `model 1` -- should change model to the first option and confirm with success message
+- [ ] **1.16** Type `model invalid-name` -- should show "Invalid model" error
 
 ---
 
@@ -317,11 +323,96 @@ file ~/.config/aios/credentials.enc  # Should say "data" not "JSON" or "ASCII"
 
 ---
 
-## 12. Docker-Specific Tests
+## 12. Claude Code Interactive Sessions
 
-- [ ] **12.1** Container starts without errors: `docker compose up -d && docker compose logs`
-- [ ] **12.2** Version check: `docker compose exec aios python3 -c "import aios; print(aios.__version__)"` -- should print "0.4.0"
-- [ ] **12.3** All imports work:
+### Prerequisites
+
+Claude Code CLI must be installed (`npm install -g @anthropic-ai/claude-code`).
+The Docker image includes it; for local testing, install it first.
+
+### Availability Check
+
+- [ ] **12.1** If Claude Code CLI is **not installed**, type `code` -- should show "Claude Code is not available" with install instructions
+- [ ] **12.2** If Claude Code CLI **is installed**, type `code` -- should proceed to auth mode chooser (first use) or launch directly
+
+### Auth Mode Chooser (First Use)
+
+- [ ] **12.3** On first `code` invocation (no `auth_mode` in config), should display:
+  - "Claude Code Authentication" header
+  - "1. API Key" and "2. Subscription" options
+  - Prompt "Choose auth mode (1 or 2) [1]:"
+- [ ] **12.4** Enter `1` (or press Enter for default) -- should show "Auth mode set to: api_key"
+- [ ] **12.5** Enter `2` -- should show "Auth mode set to: subscription"
+- [ ] **12.6** Verify choice is persisted: check `~/.config/aios/config.toml` contains `auth_mode = "api_key"` (or `"subscription"`) under `[code]`
+- [ ] **12.7** On subsequent `code` invocations, should **not** re-prompt for auth mode (goes straight to launch)
+
+### Bare Interactive Launch
+
+- [ ] **12.8** Type `code` -- should print:
+  - "Launching Claude Code..."
+  - "You'll return to AIOS when you exit."
+- [ ] **12.9** Claude Code interactive session should take over the terminal (you should see Claude Code's own UI)
+- [ ] **12.10** Type `/exit` or Ctrl+C inside Claude Code to exit -- should return to AIOS prompt
+- [ ] **12.11** After returning, should see "Claude Code session ended." success message
+
+### Launch with Initial Prompt
+
+- [ ] **12.12** Type `code build a hello world Python script` -- should launch Claude Code with the prompt pre-loaded
+- [ ] **12.13** Claude Code should start working on the given prompt immediately
+- [ ] **12.14** Exit Claude Code -- should return to AIOS with success message
+
+### Code-Sessions
+
+- [ ] **12.15** Type `code-sessions` -- should list previous code sessions in a table with columns: ID, Date, Task, Directory
+- [ ] **12.16** The table should **not** have an "Events" column (removed in v0.5.0)
+- [ ] **12.17** If no sessions exist, should show "No previous code sessions found."
+
+### Code-Continue (Resume)
+
+- [ ] **12.18** Copy a session ID from `code-sessions` output
+- [ ] **12.19** Type `code-continue <id>` -- should print "Resuming code session: <id>" then launch with `--resume`
+- [ ] **12.20** Type `code-continue <id> fix the bug in main.py` -- should resume the session with the given prompt
+- [ ] **12.21** Type `code-continue nonexistent` -- should show "Code session 'nonexistent' not found" error
+
+### Auto-Detection
+
+- [ ] **12.22** With `auto_detect = true` in config, type a coding request like "write a Python script to sort files" -- should see:
+  - "This looks like a coding task. Routing to Claude Code..."
+  - Tip about using `code` for explicit mode
+  - Claude Code session should launch with the request as prompt
+- [ ] **12.23** Non-coding requests like "show disk space" should **not** trigger auto-detection
+
+### Auth Mode Behavior
+
+- [ ] **12.24** With `auth_mode = "api_key"`: Claude Code should use the ANTHROPIC_API_KEY from AIOS config/environment
+- [ ] **12.25** With `auth_mode = "subscription"`: Claude Code should use the user's paid subscription (ANTHROPIC_API_KEY is removed from env so claude falls back to its own login)
+
+### Error Handling
+
+- [ ] **12.26** If Claude Code exits with a non-zero return code, should see an error message (not crash)
+- [ ] **12.27** If Claude Code is interrupted (Ctrl+C), should return to AIOS gracefully
+
+### Help Text
+
+- [ ] **12.28** Type `help` -- Coding Tasks section should list:
+  - `code` as "Launch Claude Code interactive session"
+  - `code <task>` as "Launch Claude Code with an initial prompt"
+  - `code-continue <id>` as "Resume a previous code session"
+  - `code-sessions` as "List previous code sessions"
+
+### Tab Completion
+
+- [ ] **12.29** Type `cod` and press Tab -- should complete to `code`
+- [ ] **12.30** Type `code-c` and press Tab -- should complete to `code-continue`
+- [ ] **12.31** Type `code-continue ` and press Tab -- should show available code session IDs
+
+---
+
+## 13. Docker-Specific Tests
+
+- [ ] **13.1** Container starts without errors: `docker compose up -d && docker compose logs`
+- [ ] **13.2** Version check: `docker compose exec aios python3 -c "import aios; print(aios.__version__)"` -- should print "0.5.0"
+- [ ] **13.3** All imports work:
   ```bash
   docker compose exec aios python3 -c "
   from aios.cache import LRUCache
@@ -330,14 +421,17 @@ file ~/.config/aios/credentials.enc  # Should say "data" not "JSON" or "ASCII"
   from aios.credentials import CredentialStore
   from aios.tasks import TaskManager, TaskStatus, BackgroundTask
   from aios.tasks.browser import TaskBrowser
+  from aios.code import CodeRunner, LaunchResult, CodeSession
+  from aios.config import CodeConfig
   print('All imports OK')
   "
   ```
-- [ ] **12.4** Config directories exist: `docker compose exec aios ls -la /home/aios/.config/aios/`
+- [ ] **13.4** Config directories exist: `docker compose exec aios ls -la /home/aios/.config/aios/`
+- [ ] **13.5** Claude Code CLI is available: `docker compose exec aios which claude` -- should print a path
 
 ---
 
-## 13. Automated Test Suite
+## 14. Automated Test Suite
 
 Run inside Docker or locally to confirm all automated tests pass:
 
@@ -349,9 +443,9 @@ docker compose exec aios bash -c "cd /app && pip install pytest pytest-cov pytes
 pytest tests/ -v
 ```
 
-- [ ] **13.1** All 343 tests pass
-- [ ] **13.2** No test failures or errors
-- [ ] **13.3** Skipped tests are only platform-specific (Windows vs Linux)
+- [ ] **14.1** All 385 tests pass
+- [ ] **14.2** No test failures or errors
+- [ ] **14.3** Skipped tests are only platform-specific (Windows vs Linux)
 
 ---
 
@@ -359,7 +453,7 @@ pytest tests/ -v
 
 | Category | Tests | Passed | Failed |
 |----------|-------|--------|--------|
-| Shell Commands | 13 | | |
+| Shell Commands | 16 | | |
 | Plugin System | 9 | | |
 | Caching System | 7 | | |
 | Rate Limiting | 3 | | |
@@ -370,15 +464,16 @@ pytest tests/ -v
 | Claude Integration | 8 | | |
 | Sudo, Timeouts & Streaming | 7 | | |
 | Background Tasks | 32 | | |
-| Docker-Specific | 4 | | |
+| Claude Code Interactive | 31 | | |
+| Docker-Specific | 5 | | |
 | Automated Tests | 3 | | |
-| **Total** | **108** | | |
+| **Total** | **143** | | |
 
 ---
 
 **Tester**: _______________
 **Date**: _______________
-**Version**: 0.4.0
+**Version**: 0.5.0
 **Environment**: Docker / Local (circle one)
 **OS**: _______________
 **Python**: _______________

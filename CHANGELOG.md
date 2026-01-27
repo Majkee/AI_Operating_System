@@ -5,6 +5,54 @@ All notable changes to AIOS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-01-27
+
+### Added
+
+#### Claude Code Interactive Sessions
+- `code` command (bare) launches an interactive Claude Code terminal session — AIOS hands off stdin/stdout/stderr and blocks until the user exits
+- `code <task>` launches Claude Code with an initial prompt passed as a positional argument
+- `code-continue <id>` resumes a previous session via `--resume`
+- `code-continue <id> <prompt>` resumes with an optional prompt
+- `LaunchResult` dataclass (`success`, `return_code`, `error`) replaces the old `CodeRunResult`
+
+#### Auth Mode Chooser
+- `auth_mode` field on `CodeConfig` (`"api_key"` | `"subscription"` | `None`)
+- On first `code` invocation, user is prompted to choose between API key and paid subscription
+- Choice is persisted to `~/.config/aios/config.toml` under `[code] auth_mode`
+- `_resolve_auth_env()` builds the subprocess environment: sets `ANTHROPIC_API_KEY` for api_key mode, removes it for subscription mode
+
+#### Tests
+- 42 tests in `tests/test_code.py`:
+  - `TestLaunchResult` (2): defaults, error fields
+  - `TestCodeSession` (3): creation, round-trip serialization, no event_count in dict
+  - `TestCodeRunner` (14): availability, install instructions, launch not available, correct command for prompt/bare/resume/resume+prompt, success/nonzero exit, auth env api_key/subscription/none, session persistence, empty sessions
+  - `TestCodeConfig` (4): defaults, auth_mode default/set, in AIOSConfig
+  - `TestCommandRegistry` (3): code/code-continue/code-sessions in registry
+  - `TestSystemPromptIntegration` (1): prompt mentions Claude Code
+  - `TestCodingRequestDetector` (14): unchanged from v0.4.0
+
+### Changed
+- `aios/code/runner.py` — rewritten: removed `CodeEvent`, `CodeRunResult`, NDJSON parsing, threading; added `LaunchResult`, `_resolve_auth_env()`, `launch_interactive()` using `subprocess.run()` with no pipe redirection; `CodeSession` no longer has `event_count`
+- `aios/code/__init__.py` — exports `LaunchResult` instead of `CodeRunResult` and `CodeEvent`
+- `aios/config.py` — `CodeConfig` gains `auth_mode: Optional[str]` field
+- `aios/shell.py` — removed `CodeStreamingDisplay`/`CodeOutputFormatter` imports; rewrote `_run_code_task()` to accept optional prompt, call `_ensure_code_auth_mode()`, then `launch_interactive()`; added `_ensure_code_auth_mode()` and `_save_code_auth_mode()`; bare `code` now launches interactive session; auto-detection calls `_run_code_task(prompt=...)` instead of wrapping; `_show_code_sessions()` table no longer has "Events" column
+- `aios/ui/terminal.py` — help text updated: `code` described as interactive session launcher
+- `aios/ui/completions.py` — `code` entry help updated to "Launch Claude Code (optionally with an initial prompt)"
+- `aios/claude/client.py` — system prompt updated to describe `code` as an interactive session launch
+- `config/default.toml` — added commented `auth_mode` under `[code]`
+- `aios/data/default.toml` — added commented `auth_mode` under `[code]`
+
+### Removed
+- `aios/code/formatter.py` — deleted entirely (Claude Code owns the terminal now)
+- `CodeEvent` dataclass — no longer needed without NDJSON parsing
+- `CodeRunResult` dataclass — replaced by `LaunchResult`
+- `_build_command()`, `_parse_event()`, `run()` methods — replaced by `launch_interactive()`
+- `event_count` field from `CodeSession`
+- NDJSON stream parsing and threading logic from runner
+
+---
+
 ## [0.4.0] - 2026-01-27
 
 ### Added

@@ -6,7 +6,7 @@ FROM debian:trixie-slim
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install Python, sudo, and system dependencies
+# Install Python, sudo, system dependencies, and Node.js
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
@@ -16,8 +16,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     git \
     procps \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
+
+# Install Claude Code CLI globally
+RUN npm install -g @anthropic-ai/claude-code
 
 # Create non-root user with sudo privileges
 RUN useradd -m -s /bin/bash aios \
@@ -37,11 +42,12 @@ RUN python3 -m venv /app/venv \
 
 # Copy application code
 COPY aios/ ./aios/
-COPY config/ ./config/
 COPY setup.py .
+COPY pyproject.toml .
 COPY README.md .
 
-# Install the application
+# Install the application (config/ is not copied to avoid setuptools package discovery issues)
+# The default.toml is included as package data in aios/data/default.toml
 RUN /app/venv/bin/pip install --no-cache-dir -e .
 
 # Change ownership to non-root user

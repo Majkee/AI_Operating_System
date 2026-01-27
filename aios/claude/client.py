@@ -109,7 +109,14 @@ This system runs as a non-root user with passwordless sudo.
 - Background tasks have no timeout and run until completion
 - The user can view background tasks with Ctrl+B or the 'tasks' command
 - Use background for: server processes, very large downloads, unattended builds
-- Prefer foreground (long_running: true) when the user wants to see progress"""
+- Prefer foreground (long_running: true) when the user wants to see progress
+
+## Claude Code Integration
+- When the user asks you to write code, build applications, or do complex coding work, suggest the 'code' command
+- Typing 'code' launches an interactive Claude Code session where the user works directly with the coding agent
+- Example: "For this task, I recommend launching Claude Code: just type 'code' or 'code build a Flask REST API'"
+- Claude Code is a specialized coding agent that can read, write, edit files, run commands, and search code
+- Simple code questions or small snippets can be answered directly without Claude Code"""
 
 
 class ClaudeClient:

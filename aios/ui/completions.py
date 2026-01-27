@@ -91,6 +91,30 @@ COMMAND_REGISTRY = [
         "help": "View and manage background tasks (also Ctrl+B)",
         "has_arg": False,
     },
+    {
+        "name": "model",
+        "aliases": ["/model"],
+        "help": "Change or view the current Claude model",
+        "has_arg": True,
+    },
+    {
+        "name": "code",
+        "aliases": ["/code"],
+        "help": "Launch Claude Code (optionally with an initial prompt)",
+        "has_arg": True,
+    },
+    {
+        "name": "code-continue",
+        "aliases": ["/code-continue"],
+        "help": "Continue a previous Claude Code session",
+        "has_arg": True,
+    },
+    {
+        "name": "code-sessions",
+        "aliases": ["/code-sessions"],
+        "help": "List previous Claude Code sessions",
+        "has_arg": False,
+    },
 ]
 
 
@@ -124,8 +148,13 @@ class AIOSCompleter(Completer):
     session IDs via *session_fetcher*.
     """
 
-    def __init__(self, session_fetcher: Optional[Callable[[], List[str]]] = None):
+    def __init__(
+        self,
+        session_fetcher: Optional[Callable[[], List[str]]] = None,
+        code_session_fetcher: Optional[Callable[[], List[str]]] = None,
+    ):
         self._session_fetcher = session_fetcher
+        self._code_session_fetcher = code_session_fetcher
 
     def get_completions(
         self, document: Document, complete_event
@@ -137,6 +166,12 @@ class AIOSCompleter(Completer):
         if lower.startswith("resume ") or lower.startswith("/resume "):
             prefix = text.split(" ", 1)[1]
             yield from self._session_completions(prefix)
+            return
+
+        # --- Dynamic session-ID completion for "code-continue <prefix>" ---
+        if lower.startswith("code-continue ") or lower.startswith("/code-continue "):
+            prefix = text.split(" ", 1)[1]
+            yield from self._code_session_completions(prefix)
             return
 
         # --- Only complete single-word (no spaces) command prefixes ---
@@ -181,6 +216,21 @@ class AIOSCompleter(Completer):
                     sid,
                     start_position=-len(prefix),
                     display_meta="session",
+                )
+
+    def _code_session_completions(self, prefix: str) -> Iterable[Completion]:
+        if self._code_session_fetcher is None:
+            return
+        try:
+            session_ids = self._code_session_fetcher()
+        except Exception:
+            return
+        for sid in session_ids:
+            if sid.lower().startswith(prefix.lower()):
+                yield Completion(
+                    sid,
+                    start_position=-len(prefix),
+                    display_meta="code session",
                 )
 
 
