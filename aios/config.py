@@ -9,17 +9,21 @@ Loads configuration from multiple sources in order of priority:
 """
 
 import os
+import sys
 from pathlib import Path
 from typing import Any, Optional
 
-import toml
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 from pydantic import BaseModel, Field
 
 
 class APIConfig(BaseModel):
     """API configuration."""
     api_key: Optional[str] = Field(default=None, description="Anthropic API key")
-    model: str = Field(default="claude-sonnet-4-20250514", description="Model to use")
+    model: str = Field(default="claude-sonnet-4-5-20250929", description="Model to use")
     max_tokens: int = Field(default=4096, description="Max tokens per response")
 
 
@@ -72,6 +76,12 @@ class SessionConfig(BaseModel):
     max_history: int = Field(default=1000, description="Maximum history entries")
 
 
+class ExecutorConfig(BaseModel):
+    """Executor configuration."""
+    default_timeout: int = Field(default=30, description="Default command timeout in seconds")
+    max_timeout: int = Field(default=3600, description="Maximum allowed timeout in seconds")
+
+
 class AIOSConfig(BaseModel):
     """Main AIOS configuration."""
     api: APIConfig = Field(default_factory=APIConfig)
@@ -79,6 +89,7 @@ class AIOSConfig(BaseModel):
     ui: UIConfig = Field(default_factory=UIConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     session: SessionConfig = Field(default_factory=SessionConfig)
+    executor: ExecutorConfig = Field(default_factory=ExecutorConfig)
 
 
 def get_config_paths() -> list[Path]:
@@ -93,8 +104,11 @@ def get_config_paths() -> list[Path]:
     system_config = Path("/etc/aios/config.toml")
     paths.append(system_config)
 
-    # Default config (bundled)
-    default_config = Path(__file__).parent.parent / "config" / "default.toml"
+    # Default config (bundled inside package — works for pip/wheel installs)
+    default_config = Path(__file__).parent / "data" / "default.toml"
+    if not default_config.exists():
+        # Fallback for Docker / editable / development installs
+        default_config = Path(__file__).parent.parent / "config" / "default.toml"
     paths.append(default_config)
 
     return paths
@@ -103,8 +117,8 @@ def get_config_paths() -> list[Path]:
 def load_toml_config(path: Path) -> dict[str, Any]:
     """Load configuration from a TOML file."""
     if path.exists():
-        with open(path, "r") as f:
-            return toml.load(f)
+        with open(path, "rb") as f:
+            return tomllib.load(f)
     return {}
 
 

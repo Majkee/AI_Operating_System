@@ -269,7 +269,7 @@ class TestCommandExecutor:
         """Test max timeout constant."""
         with patch("aios.executor.sandbox.get_config", return_value=self.mock_config):
             executor = CommandExecutor()
-            assert executor.MAX_TIMEOUT == 300
+            assert executor.MAX_TIMEOUT == 3600
 
 
 class TestInteractiveExecutor:

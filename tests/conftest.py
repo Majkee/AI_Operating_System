@@ -23,7 +23,7 @@ def mock_config():
     """Create a mock configuration object."""
     config = MagicMock()
     config.api.api_key = "test-key"
-    config.api.model = "claude-sonnet-4-20250514"
+    config.api.model = "claude-sonnet-4-5-20250929"
     config.api.max_tokens = 4096
     config.safety.require_confirmation = True
     config.safety.blocked_patterns = ["rm -rf /"]
@@ -36,6 +36,8 @@ def mock_config():
     config.session.save_history = True
     config.session.history_path = "~/.config/aios/history"
     config.session.max_history = 100
+    config.executor.default_timeout = 30
+    config.executor.max_timeout = 3600
     return config
 
 

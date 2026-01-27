@@ -50,6 +50,26 @@ For dangerous operations, set requires_confirmation to true.""",
                 "working_directory": {
                     "type": "string",
                     "description": "Directory to run the command in (defaults to user's home)"
+                },
+                "timeout": {
+                    "type": "integer",
+                    "description": "Timeout in seconds. Default 30. Use 600-3600 for downloads/installs. Max 3600.",
+                    "default": 30
+                },
+                "use_sudo": {
+                    "type": "boolean",
+                    "description": "Set true for commands needing root: apt-get, dpkg, systemctl, etc.",
+                    "default": False
+                },
+                "long_running": {
+                    "type": "boolean",
+                    "description": "Set true for large downloads, compilations, server installs. Streams live output.",
+                    "default": False
+                },
+                "background": {
+                    "type": "boolean",
+                    "description": "Start in background. Runs without timeout until done. Monitor via task browser.",
+                    "default": False
                 }
             },
             "required": ["command", "explanation"]

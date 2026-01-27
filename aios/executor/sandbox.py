@@ -11,6 +11,8 @@ Provides safe execution of shell commands with:
 import os
 import subprocess
 import shlex
+import threading
+import time
 from pathlib import Path
 from typing import Optional, Tuple
 from dataclasses import dataclass
@@ -57,7 +59,7 @@ class CommandExecutor:
     DEFAULT_TIMEOUT = 30
 
     # Maximum timeout allowed
-    MAX_TIMEOUT = 300
+    MAX_TIMEOUT = 3600
 
     # Maximum output size (10MB)
     MAX_OUTPUT_SIZE = 10 * 1024 * 1024
@@ -66,6 +68,16 @@ class CommandExecutor:
         """Initialize the executor."""
         self.config = get_config()
         self.default_cwd = Path.home()
+
+        # Apply executor config overrides if present
+        executor_cfg = getattr(self.config, 'executor', None)
+        if executor_cfg is not None:
+            dt = getattr(executor_cfg, 'default_timeout', None)
+            mt = getattr(executor_cfg, 'max_timeout', None)
+            if isinstance(dt, int):
+                self.DEFAULT_TIMEOUT = dt
+            if isinstance(mt, int):
+                self.MAX_TIMEOUT = mt
 
     def execute(
         self,
@@ -242,22 +254,46 @@ class InteractiveExecutor:
         command: str,
         working_directory: Optional[str] = None,
         on_output: Optional[callable] = None,
-        timeout: Optional[int] = None
+        timeout: Optional[int] = None,
+        env: Optional[dict] = None
     ) -> CommandResult:
         """
         Execute a command and stream output line by line.
+
+        Uses a daemon thread to read output so the main thread can
+        enforce the timeout properly even when the subprocess blocks.
 
         Args:
             command: The shell command to execute
             working_directory: Directory to run command in
             on_output: Callback function for each line of output
-            timeout: Maximum execution time
+            timeout: Maximum execution time in seconds
+            env: Additional environment variables
 
         Returns:
             CommandResult with final status
         """
         cwd = Path(working_directory) if working_directory else self.default_cwd
         timeout = timeout or 60
+
+        # Build environment
+        process_env = os.environ.copy()
+        if env:
+            process_env.update(env)
+        process_env["PATH"] = "/usr/local/bin:/usr/bin:/bin:" + process_env.get("PATH", "")
+
+        output_lines = []
+
+        def _read_output(proc):
+            """Read stdout in a background thread."""
+            try:
+                for line in proc.stdout:
+                    output_lines.append(line)
+                    if on_output:
+                        on_output(line.rstrip())
+            except (ValueError, OSError):
+                # Pipe closed or process killed
+                pass
 
         try:
             process = subprocess.Popen(
@@ -266,17 +302,37 @@ class InteractiveExecutor:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 cwd=str(cwd),
+                env=process_env,
                 bufsize=1,
-                universal_newlines=True
+                universal_newlines=True,
+                start_new_session=True
             )
 
-            output_lines = []
-            for line in process.stdout:
-                output_lines.append(line)
-                if on_output:
-                    on_output(line.rstrip())
+            reader_thread = threading.Thread(
+                target=_read_output, args=(process,), daemon=True
+            )
+            reader_thread.start()
 
-            process.wait(timeout=timeout)
+            # Wait for the reader thread (which blocks until EOF or timeout)
+            reader_thread.join(timeout=timeout)
+
+            if reader_thread.is_alive():
+                # Timeout expired — kill the process group
+                try:
+                    os.killpg(os.getpgid(process.pid), 9)
+                except (ProcessLookupError, OSError):
+                    process.kill()
+                process.wait()
+                return CommandResult(
+                    success=False,
+                    stdout="".join(output_lines),
+                    stderr="",
+                    return_code=-1,
+                    timed_out=True
+                )
+
+            # Process finished within timeout
+            process.wait()
 
             return CommandResult(
                 success=(process.returncode == 0),
@@ -285,19 +341,10 @@ class InteractiveExecutor:
                 return_code=process.returncode
             )
 
-        except subprocess.TimeoutExpired:
-            process.kill()
-            return CommandResult(
-                success=False,
-                stdout="".join(output_lines) if output_lines else "",
-                stderr="",
-                return_code=-1,
-                timed_out=True
-            )
         except Exception as e:
             return CommandResult(
                 success=False,
-                stdout="",
+                stdout="".join(output_lines) if output_lines else "",
                 stderr="",
                 return_code=-1,
                 error_message=str(e)

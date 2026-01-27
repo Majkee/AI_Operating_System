@@ -301,7 +301,7 @@ limiter = APIRateLimiter(config)
 @rate_limited(limiter, on_limited=lambda s: print(f"Waiting {s.wait_time:.1f}s..."))
 def chat_with_claude(messages):
     response = claude.messages.create(
-        model="claude-3-5-sonnet-20241022",
+        model="claude-sonnet-4-5-20250929",
         messages=messages,
         max_tokens=1024
     )

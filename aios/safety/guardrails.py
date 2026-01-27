@@ -83,6 +83,7 @@ class SafetyGuard:
 
     # Commands that should be explained but are generally safe
     MODERATE_PATTERNS = [
+        (r"^sudo\s+", "Running with administrator privileges"),
         (r"apt\s+install", "Installing software"),
         (r"apt\s+update", "Updating package lists"),
         (r"apt\s+upgrade", "Upgrading installed software"),

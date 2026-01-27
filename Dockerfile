@@ -1,7 +1,7 @@
 # AIOS - AI-powered Operating System Interface
 # Debian-based Docker image
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -49,6 +49,7 @@ RUN chown -R aios:aios /app
 
 # Create config directories with proper ownership
 RUN mkdir -p /home/aios/.config/aios/history \
+    /home/aios/.config/aios/plugins \
     && chown -R aios:aios /home/aios/.config
 
 # Switch to non-root user

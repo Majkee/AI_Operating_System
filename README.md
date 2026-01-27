@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/tests-268%20passed-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-343%20passed-brightgreen.svg)](#testing)
 [![Code style: PEP8](https://img.shields.io/badge/code%20style-pep8-green.svg)](https://www.python.org/dev/peps/pep-0008/)
 
 **Talk to your Linux system in plain English.** AIOS is a natural language interface powered by Claude that makes Linux accessible to everyone -- no command line experience required.
@@ -143,11 +143,30 @@ Secure storage for passwords and API keys:
 - Master password with PBKDF2 key derivation
 - Plugin integration for secure access
 
+### Background Tasks
+
+Run commands in the background and manage them interactively:
+
+- **Background execution**: `run_command` accepts `background: true` — starts without timeout, runs until done
+- **Ctrl+C to background**: during any streaming command, Ctrl+C offers to background the running process instead of killing it
+- **Task browser**: press **Ctrl+B** or type `tasks` to open an interactive browser — view output, attach to live output, kill, terminate, or remove tasks
+- **Toolbar indicators**: bottom toolbar shows running/finished task counts and Ctrl+B hint
+- **Completion notifications**: finished tasks are announced before each prompt
+
+### Sudo, Timeouts & Streaming
+
+Built-in support for privileged and long-running operations:
+
+- **Sudo integration**: `run_command` accepts `use_sudo` — automatically prefixes `sudo` and warns the user
+- **Configurable timeouts**: Per-command `timeout` up to 3600s (1 hour) for large downloads and installs
+- **Live streaming output**: `long_running` flag streams real-time progress in a compact live display
+- **Smart guidance**: System prompt teaches Claude when to use sudo, how to set timeouts, and when to stream
+
 ### Beautiful Interface
 
 - Rich, colorful terminal output with syntax highlighting
 - File content display with language detection
-- Progress indicators for long operations
+- Progress indicators and live streaming display for long operations
 - Clear, friendly error messages
 
 ### Flexible Configuration
@@ -156,7 +175,7 @@ Customize AIOS behavior via `~/.config/aios/config.toml`:
 
 ```toml
 [api]
-model = "claude-sonnet-4-20250514"    # Claude model to use
+model = "claude-sonnet-4-5-20250929"    # Claude model to use
 
 [ui]
 show_technical_details = false  # Show underlying commands
@@ -186,6 +205,13 @@ require_confirmation = true     # Confirm risky operations
 | `recipes` / `/recipes` | List available recipes |
 | `stats` / `/stats` | Show session statistics |
 
+### Background Tasks
+
+| Command | Description |
+|---------|-------------|
+| `tasks` / `/tasks` | View and manage background tasks |
+| **Ctrl+B** | Open task browser (from anywhere) |
+
 ### Sessions & Credentials
 
 | Command | Description |
@@ -202,7 +228,8 @@ aios/
 ├── executor/      # Safe command execution (sandboxing, file operations)
 ├── safety/        # Security (guardrails, audit logging)
 ├── context/       # State management (system info, session tracking)
-├── ui/            # Interface (terminal rendering, user prompts)
+├── tasks/         # Background task management (models, manager, browser)
+├── ui/            # Interface (terminal rendering, user prompts, completions)
 ├── cache.py       # LRU cache, system info cache, query cache
 ├── ratelimit.py   # Token bucket + sliding window rate limiting
 ├── plugins.py     # Plugin system (loading, tools, recipes)
@@ -255,7 +282,7 @@ Configuration is loaded from (in order of priority):
 ```toml
 [api]
 api_key = ""                    # Anthropic API key (prefer env var)
-model = "claude-sonnet-4-20250514"     # Model to use
+model = "claude-sonnet-4-5-20250929"     # Model to use
 max_tokens = 4096               # Max response tokens
 
 [safety]
@@ -276,11 +303,15 @@ level = "info"
 [session]
 save_history = true             # Save conversation history
 max_history = 1000              # Maximum history entries
+
+[executor]
+default_timeout = 30            # Default command timeout (seconds)
+max_timeout = 3600              # Maximum allowed timeout (1 hour)
 ```
 
 ## Testing
 
-AIOS has a comprehensive test suite with 268 tests covering all major systems.
+AIOS has a comprehensive test suite with 343 tests covering all major systems.
 
 ```bash
 # Install test dependencies
@@ -310,7 +341,11 @@ pytest tests/test_ratelimit.py -v
 | Plugin System | 28 |
 | Rate Limiting | 33 |
 | Safety Guardrails | 22 |
+| Sandbox / Executor | 20 |
 | Session Management | 18 |
+| Sudo / Timeout / Streaming | 18 |
+| Background Tasks | 33 |
+| Tab Completions | 18 |
 
 CI runs automatically on every push and PR. See [CI.md](CI.md) for details.
 
@@ -380,6 +415,8 @@ AIOS takes security seriously. See [SECURITY.md](SECURITY.md) for:
 - [x] Session persistence and resume
 - [x] Credential management
 - [x] CI/CD pipeline
+- [x] Sudo support, configurable timeouts, and live streaming output
+- [x] Background tasks with interactive browser and Ctrl+C-to-background
 - [ ] Web-based interface option
 - [ ] Multi-language support
 - [ ] Voice input integration

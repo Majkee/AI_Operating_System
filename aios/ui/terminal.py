@@ -8,18 +8,75 @@ Designed to be accessible and clear for non-technical users.
 from typing import Optional, List, Any
 from pathlib import Path
 
+from collections import deque
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.markdown import Markdown
 from rich.syntax import Syntax
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.tree import Tree
 from rich.text import Text
 from rich.style import Style
 from rich.box import ROUNDED
+from rich.live import Live
 
 from ..config import get_config
+
+
+class StreamingDisplay:
+    """Live-updating display for streaming command output.
+
+    Shows the last N lines of output in a panel that replaces itself,
+    keeping the terminal clean during long-running operations.
+    """
+
+    def __init__(self, console: Console, description: str = "Running...", max_lines: int = 8):
+        self._console = console
+        self._description = description
+        self._max_lines = max_lines
+        self._lines: deque = deque(maxlen=max_lines)
+        self._total_lines = 0
+        self._live: Optional[Live] = None
+
+    def __enter__(self):
+        self._live = Live(
+            self._render(),
+            console=self._console,
+            transient=True,
+            refresh_per_second=8,
+        )
+        self._live.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._live:
+            self._live.__exit__(exc_type, exc_val, exc_tb)
+        self._console.print(
+            f"[green]✓[/green] Completed. ({self._total_lines} lines of output)"
+        )
+        return False
+
+    def add_line(self, line: str) -> None:
+        """Add a line of output and refresh the display."""
+        self._lines.append(line)
+        self._total_lines += 1
+        if self._live:
+            self._live.update(self._render())
+
+    def _render(self) -> Panel:
+        """Render the current state as a Rich Panel."""
+        if self._lines:
+            body = "\n".join(self._lines)
+        else:
+            body = "[dim]Waiting for output...[/dim]"
+        return Panel(
+            body,
+            title=f"⚙  {self._description}  ({self._total_lines} lines)",
+            border_style="blue",
+            box=ROUNDED,
+        )
 
 
 class TerminalUI:
@@ -198,6 +255,10 @@ class TerminalUI:
     def print_code(self, code: str, language: str = "python") -> None:
         """Print code with syntax highlighting."""
         self.console.print(Syntax(code, language, theme="monokai", line_numbers=True))
+
+    def print_streaming_output(self, description: str = "Running...") -> StreamingDisplay:
+        """Return a StreamingDisplay context manager for live output."""
+        return StreamingDisplay(self.console, description)
 
     def print_output(self, output: str, title: Optional[str] = None) -> None:
         """Print command output."""

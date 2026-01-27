@@ -10,17 +10,24 @@ This is the core of AIOS, handling:
 
 import os
 import sys
-from typing import Optional, Dict, Any
+import subprocess
+import threading
+from typing import Optional, Dict, Any, List
 from pathlib import Path
 
-from prompt_toolkit import prompt
+from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+from prompt_toolkit.key_binding import KeyBindings
+
+from .ui.completions import AIOSCompleter, create_bottom_toolbar
+from .tasks import TaskManager, TaskStatus
+from .tasks.browser import TaskBrowser
 
 from .config import get_config, ensure_config_dirs
 from .claude.client import ClaudeClient
 from .claude.tools import ToolHandler, ToolResult
-from .executor.sandbox import CommandExecutor, CommandResult
+from .executor.sandbox import CommandExecutor, InteractiveExecutor, CommandResult
 from .executor.files import FileHandler
 from .context.system import SystemContextGatherer
 from .context.session import SessionManager
@@ -81,6 +88,8 @@ class AIOSShell:
         self.prompts = ConfirmationPrompt()
         self.safety = SafetyGuard()
         self.executor = CommandExecutor()
+        self.streaming_executor = InteractiveExecutor()
+        self.task_manager = TaskManager()
         self.files = FileHandler()
         self.system = SystemContextGatherer()
         self.session = SessionManager()
@@ -108,9 +117,28 @@ class AIOSShell:
         # Session state
         self.running = False
 
-        # Command history
+        # Command history and prompt session
         history_path = Path.home() / ".config" / "aios" / "command_history"
         self.history = FileHistory(str(history_path))
+        self.completer = AIOSCompleter(session_fetcher=self._get_session_ids)
+
+        # Key bindings
+        kb = KeyBindings()
+
+        @kb.add('c-b')
+        def _open_tasks(event):
+            event.current_buffer.text = ''
+            event.app.exit(result='\x02')
+
+        self._key_bindings = kb
+
+        self._prompt_session = PromptSession(
+            history=self.history,
+            auto_suggest=AutoSuggestFromHistory(),
+            completer=self.completer,
+            complete_while_typing=False,
+            key_bindings=self._key_bindings,
+        )
 
     def _register_tools(self) -> None:
         """Register built-in tool handlers."""
@@ -227,6 +255,14 @@ class AIOSShell:
             tokens_per_minute=getattr(self.config.api, 'tokens_per_minute', 100000),
         )
         configure_rate_limiter(config)
+
+    def _get_session_ids(self) -> list:
+        """Return recent session IDs for tab completion."""
+        try:
+            sessions = self.session.list_sessions(limit=20)
+            return [s["session_id"] for s in sessions]
+        except Exception:
+            return []
 
     def _show_plugins(self) -> None:
         """Display loaded plugins."""
@@ -471,6 +507,14 @@ class AIOSShell:
         explanation = params.get("explanation", "Running a command")
         requires_confirmation = params.get("requires_confirmation", False)
         working_dir = params.get("working_directory")
+        use_sudo = params.get("use_sudo", False)
+        timeout = params.get("timeout")
+        long_running = params.get("long_running", False)
+        background = params.get("background", False)
+
+        # Prepend sudo if requested and not already present
+        if use_sudo and not command.lstrip().startswith("sudo "):
+            command = f"sudo {command}"
 
         # Safety check
         safety_check = self.safety.check_command(command)
@@ -492,6 +536,15 @@ class AIOSShell:
         # Show what we're doing
         self.ui.print_executing(explanation)
 
+        # Inform the user about elevated privileges
+        if use_sudo:
+            self.ui.print_warning("This command requires administrator privileges (sudo).")
+
+        # Inform about long timeout
+        if timeout and timeout > 60:
+            minutes = (timeout + 59) // 60
+            self.ui.print_info(f"This operation may take up to {minutes} minute(s).")
+
         # Confirmation for dangerous commands
         if safety_check.requires_confirmation or requires_confirmation:
             result = self.prompts.confirm_dangerous_action(
@@ -509,8 +562,32 @@ class AIOSShell:
         # Show command in technical mode
         self.ui.print_command(command)
 
-        # Execute
-        cmd_result = self.executor.execute(command, working_directory=working_dir)
+        # Background execution — no timeout, runs until done
+        if background:
+            self.ui.print_info(f"Starting in background: {explanation}")
+            task = self.task_manager.create_task(
+                command, explanation, working_dir
+            )
+            self.ui.print_success(
+                f"Background task #{task.task_id} started. Ctrl+B to view."
+            )
+            return ToolResult(
+                success=True,
+                output=f"Task started in background (ID: {task.task_id})",
+                user_friendly_message=(
+                    f"Started background task #{task.task_id}"
+                ),
+            )
+
+        # Execute — streaming or standard
+        if long_running:
+            cmd_result = self._execute_streaming(
+                command, working_dir, timeout or 300, explanation
+            )
+        else:
+            cmd_result = self.executor.execute(
+                command, working_directory=working_dir, timeout=timeout
+            )
 
         # Log
         self.audit.log_command(
@@ -520,11 +597,169 @@ class AIOSShell:
             working_dir
         )
 
+        # Provide helpful timeout message
+        if cmd_result.timed_out:
+            effective_timeout = timeout or self.executor.DEFAULT_TIMEOUT
+            return ToolResult(
+                success=False,
+                output=cmd_result.stdout,
+                error="Command timed out",
+                user_friendly_message=(
+                    f"The command timed out after {effective_timeout} seconds. "
+                    "You can retry with a higher timeout value."
+                )
+            )
+
         return ToolResult(
             success=cmd_result.success,
             output=cmd_result.output,
             error=cmd_result.error_message,
             user_friendly_message=cmd_result.to_user_friendly()
+        )
+
+    def _execute_streaming(
+        self,
+        command: str,
+        working_dir: Optional[str],
+        timeout: int,
+        description: str,
+    ) -> CommandResult:
+        """Execute a command with live streaming output.
+
+        If the user presses Ctrl+C during execution, they are offered the
+        option to background the still-running process rather than killing it.
+        """
+        cwd = Path(working_dir) if working_dir else Path.home()
+
+        process_env = os.environ.copy()
+        if sys.platform != "win32":
+            process_env["PATH"] = (
+                "/usr/local/bin:/usr/bin:/bin:" + process_env.get("PATH", "")
+            )
+
+        popen_kwargs: Dict[str, Any] = dict(
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            cwd=str(cwd),
+            env=process_env,
+            bufsize=1,
+            universal_newlines=True,
+        )
+        if sys.platform != "win32":
+            popen_kwargs["start_new_session"] = True
+
+        output_lines: List[str] = []
+
+        try:
+            process = subprocess.Popen(command, **popen_kwargs)
+        except Exception as e:
+            return CommandResult(
+                success=False,
+                stdout="",
+                stderr="",
+                return_code=-1,
+                error_message=str(e),
+            )
+
+        def _reader():
+            try:
+                for line in process.stdout:
+                    stripped = line.rstrip("\n\r")
+                    output_lines.append(stripped)
+                    if display_callback[0] is not None:
+                        try:
+                            display_callback[0](stripped)
+                        except Exception:
+                            pass
+            except (ValueError, OSError):
+                pass
+
+        # Mutable container so the reader thread can see callback changes
+        display_callback: List[Any] = [None]
+
+        reader_thread = threading.Thread(target=_reader, daemon=True)
+        reader_thread.start()
+
+        try:
+            with self.ui.print_streaming_output(description) as display:
+                display_callback[0] = display.add_line
+                reader_thread.join(timeout=timeout)
+        except KeyboardInterrupt:
+            # Offer to background the still-running process
+            display_callback[0] = None  # detach live display
+            if process.poll() is None:
+                try:
+                    answer = input("\nBackground this task? [y/N]: ").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    answer = "n"
+
+                if answer == "y":
+                    task = self.task_manager.adopt_task(
+                        command=command,
+                        description=description,
+                        process=process,
+                        reader_thread=reader_thread,
+                        output_buffer=list(output_lines),
+                    )
+                    self.ui.print_success(
+                        f"Backgrounded as task #{task.task_id}. Ctrl+B to view."
+                    )
+                    return CommandResult(
+                        success=True,
+                        stdout="".join(
+                            ln + "\n" for ln in output_lines
+                        ),
+                        stderr="",
+                        return_code=-1,
+                        error_message="Backgrounded by user",
+                    )
+                else:
+                    # Kill the process
+                    try:
+                        if sys.platform != "win32":
+                            os.killpg(os.getpgid(process.pid), 9)
+                        else:
+                            process.kill()
+                    except (ProcessLookupError, OSError):
+                        pass
+                    process.wait()
+                    return CommandResult(
+                        success=False,
+                        stdout="".join(ln + "\n" for ln in output_lines),
+                        stderr="",
+                        return_code=-1,
+                        error_message="Cancelled by user",
+                    )
+            else:
+                # Process already finished during the interrupt
+                pass
+
+        # Check if the reader timed out
+        if reader_thread.is_alive():
+            try:
+                if sys.platform != "win32":
+                    os.killpg(os.getpgid(process.pid), 9)
+                else:
+                    process.kill()
+            except (ProcessLookupError, OSError):
+                pass
+            process.wait()
+            return CommandResult(
+                success=False,
+                stdout="".join(ln + "\n" for ln in output_lines),
+                stderr="",
+                return_code=-1,
+                timed_out=True,
+            )
+
+        # Normal completion
+        process.wait()
+        return CommandResult(
+            success=(process.returncode == 0),
+            stdout="".join(ln + "\n" for ln in output_lines),
+            stderr="",
+            return_code=process.returncode,
         )
 
     def _handle_read_file(self, params: Dict[str, Any]) -> ToolResult:
@@ -797,9 +1032,14 @@ class AIOSShell:
         else:
             return ToolResult(success=False, output="", error="Unknown action")
 
-        # Execute with extended timeout for package operations
+        # Execute with extended timeout and streaming for package operations
         self.ui.print_info(f"Running package operation (this may take a moment)...")
-        cmd_result = self.executor.execute(command, timeout=300)
+        if action in ("install", "update"):
+            cmd_result = self._execute_streaming(
+                command, None, 600, f"{action.capitalize()}ing {package}"
+            )
+        else:
+            cmd_result = self.executor.execute(command, timeout=300)
 
         self.audit.log_package_operation(action, package, cmd_result.success)
 
@@ -947,6 +1187,10 @@ class AIOSShell:
             self._show_sessions()
             return True
 
+        if lower_input in ("tasks", "/tasks"):
+            TaskBrowser(self.task_manager, self.ui.console).show()
+            return True
+
         if lower_input.startswith("resume ") or lower_input.startswith("/resume "):
             session_id = user_input.split(" ", 1)[1].strip()
             self._resume_session(session_id)
@@ -1071,12 +1315,31 @@ class AIOSShell:
         # Main loop
         while self.running:
             try:
+                # Show completion notifications for background tasks
+                for done_task in self.task_manager.get_unnotified_completions():
+                    word = (
+                        "completed"
+                        if done_task.status == TaskStatus.COMPLETED
+                        else "failed"
+                    )
+                    self.ui.print_info(
+                        f"Background task #{done_task.task_id} "
+                        f"({done_task.description}) {word}."
+                    )
+                    done_task.mark_notified()
+
                 # Get user input
-                user_input = prompt(
+                user_input = self._prompt_session.prompt(
                     "You: ",
-                    history=self.history,
-                    auto_suggest=AutoSuggestFromHistory(),
+                    bottom_toolbar=create_bottom_toolbar(
+                        self._prompt_session, self.task_manager
+                    ),
                 ).strip()
+
+                # Handle Ctrl+B sentinel
+                if user_input == '\x02':
+                    TaskBrowser(self.task_manager, self.ui.console).show()
+                    continue
 
                 # Process input with error boundary
                 with ErrorBoundary(
@@ -1111,6 +1374,7 @@ class AIOSShell:
                 break
 
         # Cleanup
+        self.task_manager.cleanup()
         self._notify_plugins_session_end()
         self.session.end_session()
         return 0

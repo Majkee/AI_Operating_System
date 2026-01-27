@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "aiosys"
+version = "0.4.0"
+description = "AI-powered Operating System Interface - Natural language interface for Linux"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "AIOS Team", email = "aios@example.com" },
+]
+keywords = ["ai", "assistant", "linux", "natural-language", "claude"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: System :: Operating System",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "anthropic>=0.76.0",
+    "rich>=14.0.0",
+    "prompt-toolkit>=3.0.52",
+    "tomli>=2.4.0;python_version<'3.11'",
+    "tomli-w>=1.1.0",
+    "pydantic>=2.12.0",
+    "psutil>=7.0.0",
+    "cryptography>=46.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Majkee/AI_Operating_System"
+Repository = "https://github.com/Majkee/AI_Operating_System"
+Issues = "https://github.com/Majkee/AI_Operating_System/issues"
+
+[project.scripts]
+aios = "aios.main:main"
+
+[tool.setuptools.packages.find]
+include = ["aios*"]
+
+[tool.setuptools.package-data]
+"aios" = ["data/*.toml"]

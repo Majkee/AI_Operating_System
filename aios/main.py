@@ -21,7 +21,7 @@ Examples:
   aios --setup            Run first-time setup
   aios "show my files"    Run a single command
 
-For more information, visit: https://github.com/your-org/aios
+For more information, visit: https://github.com/Majkee/AI_Operating_System
         """
     )
 

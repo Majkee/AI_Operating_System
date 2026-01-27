@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-import toml
+import tomli_w
 
 from aios.config import (
     AIOSConfig,
@@ -29,7 +29,7 @@ class TestConfigModels:
         """Test APIConfig has correct defaults."""
         config = APIConfig()
         assert config.api_key is None
-        assert config.model == "claude-sonnet-4-20250514"
+        assert config.model == "claude-sonnet-4-5-20250929"
         assert config.max_tokens == 4096
 
     def test_safety_config_defaults(self):
@@ -77,8 +77,8 @@ class TestConfigLoading:
         # Create temp file and close it before reading
         fd, temp_path = tempfile.mkstemp(suffix=".toml")
         try:
-            with os.fdopen(fd, "w") as f:
-                toml.dump({"api": {"model": "test-model"}}, f)
+            with os.fdopen(fd, "wb") as f:
+                tomli_w.dump({"api": {"model": "test-model"}}, f)
 
             config = load_toml_config(Path(temp_path))
             assert config["api"]["model"] == "test-model"
@@ -142,9 +142,9 @@ class TestEnvironmentOverrides:
 
     def test_model_override(self):
         """Test AIOS_MODEL override."""
-        os.environ["AIOS_MODEL"] = "claude-opus-4-20250514"
+        os.environ["AIOS_MODEL"] = "claude-opus-4-5-20251101"
         overrides = load_env_overrides()
-        assert overrides["api"]["model"] == "claude-opus-4-20250514"
+        assert overrides["api"]["model"] == "claude-opus-4-5-20251101"
 
     def test_debug_mode(self):
         """Test AIOS_DEBUG enables debug settings."""
