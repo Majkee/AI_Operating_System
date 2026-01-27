@@ -5,7 +5,7 @@ These tools define what actions Claude can take on the system.
 Each tool is designed to be safe and user-friendly for non-technical users.
 """
 
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, List, Optional
 from dataclasses import dataclass
 
 
@@ -19,8 +19,8 @@ class ToolResult:
     user_friendly_message: str = ""
 
 
-# Tool definitions for Claude API
-TOOLS = [
+# Built-in tool definitions for Claude API
+BUILTIN_TOOLS = [
     {
         "name": "run_command",
         "description": """Execute a shell command on the system. Use this for system operations like:
@@ -62,7 +62,8 @@ For dangerous operations, set requires_confirmation to true.""",
 - Read documents
 - Check file contents before modifying
 
-Always explain to the user what file you're reading and why.""",
+Always explain to the user what file you're reading and why.
+Set display_content to true when the user wants to SEE the file contents (e.g., "show me the file", "display the contents").""",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -73,6 +74,11 @@ Always explain to the user what file you're reading and why.""",
                 "explanation": {
                     "type": "string",
                     "description": "Why you're reading this file (shown to user)"
+                },
+                "display_content": {
+                    "type": "boolean",
+                    "description": "If true, display the file contents to the user. Use when user wants to see/view the file.",
+                    "default": False
                 }
             },
             "required": ["path", "explanation"]
@@ -289,10 +295,30 @@ class ToolHandler:
 
     def __init__(self):
         self._handlers: dict[str, Callable] = {}
+        self._tool_definitions: List[Dict[str, Any]] = []
 
     def register(self, tool_name: str, handler: Callable) -> None:
         """Register a handler function for a tool."""
         self._handlers[tool_name] = handler
+
+    def register_tool(
+        self,
+        name: str,
+        description: str,
+        input_schema: Dict[str, Any],
+        handler: Callable,
+        requires_confirmation: bool = False
+    ) -> None:
+        """Register a complete tool with definition and handler."""
+        # Register the handler
+        self._handlers[name] = handler
+
+        # Add tool definition
+        self._tool_definitions.append({
+            "name": name,
+            "description": description,
+            "input_schema": input_schema
+        })
 
     def execute(self, tool_name: str, tool_input: dict[str, Any]) -> ToolResult:
         """Execute a tool and return the result."""
@@ -318,3 +344,15 @@ class ToolHandler:
     def get_tool_names(self) -> list[str]:
         """Get list of registered tool names."""
         return list(self._handlers.keys())
+
+    def get_all_tools(self) -> List[Dict[str, Any]]:
+        """Get all tool definitions (built-in + registered)."""
+        return BUILTIN_TOOLS + self._tool_definitions
+
+    def get_plugin_tools(self) -> List[Dict[str, Any]]:
+        """Get only plugin-registered tool definitions."""
+        return self._tool_definitions.copy()
+
+
+# Legacy alias for backwards compatibility
+TOOLS = BUILTIN_TOOLS

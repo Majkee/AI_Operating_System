@@ -39,6 +39,30 @@ from .errors import (
     safe_execute,
     ErrorRecovery,
 )
+from .plugins import (
+    get_plugin_manager,
+    PluginManager,
+    ToolDefinition,
+    Recipe,
+)
+from .cache import (
+    get_system_info_cache,
+    get_query_cache,
+    SystemInfoCache,
+    QueryCache,
+)
+from .ratelimit import (
+    get_rate_limiter,
+    configure_rate_limiter,
+    RateLimitConfig,
+    APIRateLimiter,
+)
+from .credentials import (
+    get_credential_store,
+    store_credential,
+    get_credential,
+    list_credentials,
+)
 
 
 class AIOSShell:
@@ -66,6 +90,18 @@ class AIOSShell:
         self.tool_handler = ToolHandler()
         self._register_tools()
 
+        # Initialize plugin system
+        self.plugin_manager = get_plugin_manager()
+        self._load_plugins()
+
+        # Initialize caching
+        self.system_cache = get_system_info_cache()
+        self.query_cache = get_query_cache()
+
+        # Initialize rate limiting
+        self.rate_limiter = get_rate_limiter()
+        self._configure_rate_limiter()
+
         # Initialize Claude client (may fail if no API key)
         self.claude: Optional[ClaudeClient] = None
 
@@ -77,7 +113,7 @@ class AIOSShell:
         self.history = FileHistory(str(history_path))
 
     def _register_tools(self) -> None:
-        """Register tool handlers."""
+        """Register built-in tool handlers."""
         self.tool_handler.register("run_command", self._handle_run_command)
         self.tool_handler.register("read_file", self._handle_read_file)
         self.tool_handler.register("write_file", self._handle_write_file)
@@ -87,6 +123,347 @@ class AIOSShell:
         self.tool_handler.register("manage_application", self._handle_manage_application)
         self.tool_handler.register("ask_clarification", self._handle_ask_clarification)
         self.tool_handler.register("open_application", self._handle_open_application)
+
+    def _load_plugins(self) -> None:
+        """Load plugins and register their tools."""
+        # Discover and load all plugins
+        try:
+            loaded_plugins = self.plugin_manager.load_all()
+            if loaded_plugins:
+                self.ui.print_info(f"Loaded {len(loaded_plugins)} plugin(s)")
+
+            # Register plugin tools
+            for tool in self.plugin_manager.get_all_tools().values():
+                self._register_plugin_tool(tool)
+
+        except Exception as e:
+            self.ui.print_warning(f"Failed to load some plugins: {e}")
+
+    def _register_plugin_tool(self, tool: ToolDefinition) -> None:
+        """Register a plugin tool with the tool handler."""
+        # Create a wrapper that handles plugin tool execution
+        def plugin_tool_handler(params: Dict[str, Any]) -> ToolResult:
+            # Handle confirmation if required
+            if tool.requires_confirmation:
+                explanation = params.get("explanation", f"Running {tool.name}")
+                result = self.prompts.confirm(
+                    f"Allow {tool.name}?",
+                    default=True,
+                    warning=f"This plugin tool wants to: {explanation}"
+                )
+                if result != ConfirmationResult.YES:
+                    return ToolResult(
+                        success=False,
+                        output="",
+                        user_friendly_message="Okay, cancelled."
+                    )
+
+            # Execute the plugin tool handler
+            try:
+                result = tool.handler(params)
+
+                # Convert plugin result format to ToolResult
+                if isinstance(result, dict):
+                    return ToolResult(
+                        success=result.get("success", True),
+                        output=result.get("output", ""),
+                        error=result.get("error"),
+                        user_friendly_message=result.get("message", "")
+                    )
+                else:
+                    return ToolResult(
+                        success=True,
+                        output=str(result),
+                        user_friendly_message=""
+                    )
+
+            except Exception as e:
+                return ToolResult(
+                    success=False,
+                    output="",
+                    error=str(e),
+                    user_friendly_message=f"Plugin tool failed: {e}"
+                )
+
+        # Register the tool with its full definition
+        self.tool_handler.register_tool(
+            name=tool.name,
+            description=tool.description,
+            input_schema=tool.input_schema,
+            handler=plugin_tool_handler,
+            requires_confirmation=tool.requires_confirmation
+        )
+
+    def _get_matching_recipe(self, user_input: str) -> Optional[Recipe]:
+        """Check if user input matches any recipe."""
+        return self.plugin_manager.find_matching_recipe(user_input)
+
+    def _notify_plugins_session_start(self) -> None:
+        """Notify all plugins that a session has started."""
+        for plugin_meta in self.plugin_manager.list_plugins():
+            try:
+                plugin = self.plugin_manager._plugins.get(plugin_meta.name)
+                if plugin and hasattr(plugin.instance, 'on_session_start'):
+                    plugin.instance.on_session_start()
+            except Exception as e:
+                self.ui.print_warning(f"Plugin {plugin_meta.name} session start failed: {e}")
+
+    def _notify_plugins_session_end(self) -> None:
+        """Notify all plugins that a session is ending."""
+        for plugin_meta in self.plugin_manager.list_plugins():
+            try:
+                plugin = self.plugin_manager._plugins.get(plugin_meta.name)
+                if plugin and hasattr(plugin.instance, 'on_session_end'):
+                    plugin.instance.on_session_end()
+            except Exception as e:
+                self.ui.print_warning(f"Plugin {plugin_meta.name} session end failed: {e}")
+
+    def _configure_rate_limiter(self) -> None:
+        """Configure rate limiter from config."""
+        # Use config values or defaults
+        config = RateLimitConfig(
+            requests_per_minute=getattr(self.config.api, 'requests_per_minute', 50),
+            requests_per_hour=getattr(self.config.api, 'requests_per_hour', 500),
+            tokens_per_minute=getattr(self.config.api, 'tokens_per_minute', 100000),
+        )
+        configure_rate_limiter(config)
+
+    def _show_plugins(self) -> None:
+        """Display loaded plugins."""
+        plugins = self.plugin_manager.list_plugins()
+
+        if not plugins:
+            self.ui.print_info("No plugins loaded.")
+            self.ui.print_info("Place plugins in ~/.config/aios/plugins/")
+            return
+
+        self.ui.console.print("\n[bold cyan]Loaded Plugins[/bold cyan]\n")
+
+        for plugin in plugins:
+            tools = self.plugin_manager.get_all_tools()
+            plugin_tools = [t for t in tools.values()
+                          if hasattr(t, 'category') and t.category == plugin.name]
+            tool_count = len(plugin_tools)
+
+            self.ui.console.print(
+                f"  [green]●[/green] [bold]{plugin.name}[/bold] v{plugin.version}"
+            )
+            self.ui.console.print(f"    {plugin.description}")
+            self.ui.console.print(f"    [dim]Tools: {tool_count} | Author: {plugin.author}[/dim]")
+            self.ui.console.print()
+
+    def _show_recipes(self) -> None:
+        """Display available recipes."""
+        recipes = self.plugin_manager.get_all_recipes()
+
+        if not recipes:
+            self.ui.print_info("No recipes available.")
+            return
+
+        self.ui.console.print("\n[bold cyan]Available Recipes[/bold cyan]\n")
+
+        for name, recipe in recipes.items():
+            triggers = ", ".join(f'"{t}"' for t in recipe.trigger_phrases[:2])
+            self.ui.console.print(f"  [green]●[/green] [bold]{name}[/bold]")
+            self.ui.console.print(f"    {recipe.description}")
+            self.ui.console.print(f"    [dim]Triggers: {triggers}[/dim]")
+            self.ui.console.print(f"    [dim]Steps: {len(recipe.steps)}[/dim]")
+            self.ui.console.print()
+
+        self.ui.print_info("Say a trigger phrase to run a recipe.")
+
+    def _show_tools(self) -> None:
+        """Display available tools."""
+        # Get built-in tools
+        builtin_tools = self.tool_handler.get_tool_names()
+
+        # Get plugin tools
+        plugin_tools = self.plugin_manager.get_all_tools()
+
+        self.ui.console.print("\n[bold cyan]Available Tools[/bold cyan]\n")
+
+        self.ui.console.print("[bold]Built-in Tools:[/bold]")
+        for tool_name in sorted(builtin_tools):
+            if tool_name not in plugin_tools:
+                self.ui.console.print(f"  [dim]●[/dim] {tool_name}")
+
+        if plugin_tools:
+            self.ui.console.print("\n[bold]Plugin Tools:[/bold]")
+            for name, tool in sorted(plugin_tools.items()):
+                confirm = "[yellow]⚠[/yellow]" if tool.requires_confirmation else "[dim]●[/dim]"
+                self.ui.console.print(f"  {confirm} {name}")
+                self.ui.console.print(f"      [dim]{tool.description[:60]}...[/dim]")
+
+        self.ui.console.print()
+
+    def _show_credentials(self) -> None:
+        """Display stored credentials (names only, not values)."""
+        try:
+            creds = list_credentials()
+        except Exception:
+            self.ui.print_info("Credential store not initialized.")
+            self.ui.print_info("Credentials will be requested when needed by plugins.")
+            return
+
+        if not creds:
+            self.ui.print_info("No stored credentials.")
+            self.ui.print_info("Credentials will be requested when needed by plugins.")
+            return
+
+        self.ui.console.print("\n[bold cyan]Stored Credentials[/bold cyan]\n")
+
+        for name in sorted(creds):
+            cred = get_credential(name)
+            if cred:
+                details = []
+                if cred.username:
+                    details.append(f"user: {cred.username}")
+                if cred.password:
+                    details.append("password: ****")
+                if cred.api_key:
+                    details.append("api_key: ****")
+                if cred.extra:
+                    details.append(f"extra: {len(cred.extra)} fields")
+
+                detail_str = ", ".join(details) if details else "empty"
+                self.ui.console.print(f"  [green]●[/green] [bold]{name}[/bold]")
+                self.ui.console.print(f"    [dim]{detail_str}[/dim]")
+
+        self.ui.console.print()
+        self.ui.print_info("Use 'credential add <name>' or 'credential delete <name>' to manage.")
+
+    def _show_stats(self) -> None:
+        """Display session and system stats."""
+        self.ui.console.print("\n[bold cyan]Session Statistics[/bold cyan]\n")
+
+        # Rate limiter stats
+        rl_stats = self.rate_limiter.stats
+        self.ui.console.print("[bold]API Usage:[/bold]")
+        self.ui.console.print(f"  Requests this session: {rl_stats['total_requests']}")
+        self.ui.console.print(f"  Tokens used: {rl_stats['total_tokens_used']}")
+        self.ui.console.print(f"  Requests remaining (minute): {rl_stats.get('requests_remaining_minute', 'N/A')}")
+
+        # Cache stats
+        self.ui.console.print("\n[bold]Cache Performance:[/bold]")
+        sys_cache_stats = self.system_cache.stats
+        for info_type, stats in sys_cache_stats.items():
+            if stats.get('hits', 0) > 0 or stats.get('misses', 0) > 0:
+                hit_rate = stats['hits'] / (stats['hits'] + stats['misses']) * 100 if (stats['hits'] + stats['misses']) > 0 else 0
+                self.ui.console.print(f"  {info_type}: {hit_rate:.0f}% hit rate ({stats['hits']} hits, {stats['misses']} misses)")
+
+        # Plugin stats
+        plugins = self.plugin_manager.list_plugins()
+        tools = self.plugin_manager.get_all_tools()
+        recipes = self.plugin_manager.get_all_recipes()
+        self.ui.console.print("\n[bold]Plugins:[/bold]")
+        self.ui.console.print(f"  Loaded: {len(plugins)}")
+        self.ui.console.print(f"  Tools: {len(tools)}")
+        self.ui.console.print(f"  Recipes: {len(recipes)}")
+
+        self.ui.console.print()
+
+    def _show_sessions(self) -> None:
+        """Display previous sessions."""
+        sessions = self.session.list_sessions(limit=10)
+
+        if not sessions:
+            self.ui.print_info("No previous sessions found.")
+            return
+
+        self.ui.console.print("\n[bold cyan]Previous Sessions[/bold cyan]\n")
+
+        for sess in sessions:
+            session_id = sess['session_id']
+            started = sess['started_at']
+            msg_count = sess['message_count']
+
+            # Format the date nicely
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(started)
+                formatted_date = dt.strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                formatted_date = started[:16]
+
+            self.ui.console.print(
+                f"  [green]●[/green] [bold]{session_id}[/bold]"
+            )
+            self.ui.console.print(
+                f"    [dim]Started: {formatted_date} | Messages: {msg_count}[/dim]"
+            )
+
+        self.ui.console.print()
+        self.ui.print_info("Use 'resume <session_id>' to continue a previous session.")
+
+    def _resume_session(self, session_id: str) -> None:
+        """Resume a previous session."""
+        # Try to load the session
+        loaded_session = self.session.load_session(session_id)
+
+        if loaded_session is None:
+            self.ui.print_error(f"Session '{session_id}' not found.")
+            self.ui.print_info("Use '/sessions' to list available sessions.")
+            return
+
+        self.ui.print_success(f"Resumed session: {session_id}")
+
+        # Show session info
+        msg_count = len(loaded_session.messages)
+        self.ui.print_info(f"Session has {msg_count} message(s) in history.")
+
+        # Show recent conversation context
+        if msg_count > 0:
+            self.ui.console.print("\n[bold]Recent conversation:[/bold]")
+            recent_messages = loaded_session.messages[-5:]  # Last 5 messages
+            for msg in recent_messages:
+                role = "[cyan]You[/cyan]" if msg.role == "user" else "[green]AIOS[/green]"
+                preview = msg.content[:100]
+                if len(msg.content) > 100:
+                    preview += "..."
+                self.ui.console.print(f"  {role}: {preview}")
+            self.ui.console.print()
+
+        # Restore Claude conversation history if available
+        if self.claude and msg_count > 0:
+            self._restore_claude_history(loaded_session.messages)
+            self.ui.print_info("Conversation history restored.")
+
+    def _restore_claude_history(self, messages) -> None:
+        """Restore Claude conversation history from session messages."""
+        if not self.claude:
+            return
+
+        # Clear current conversation buffer
+        self.claude.conversation.clear()
+
+        # Add messages to conversation buffer
+        for msg in messages[-20:]:  # Keep last 20 messages for context
+            if msg.role == "user":
+                self.claude.conversation.add_user_message(msg.content)
+            elif msg.role == "assistant":
+                self.claude.conversation.add_assistant_message(msg.content)
+
+    def _check_rate_limit(self) -> bool:
+        """Check rate limit before API call. Returns True if allowed."""
+        status = self.rate_limiter.check()
+        if status.is_limited:
+            self.ui.print_warning(
+                f"Rate limited. Please wait {status.wait_time:.1f}s before next request."
+            )
+            return False
+
+        # Warn if approaching limits
+        if status.requests_remaining < 5:
+            self.ui.print_warning(
+                f"Approaching rate limit: {status.requests_remaining} requests remaining this minute."
+            )
+        return True
+
+    def _record_api_usage(self, tokens_used: int = 0) -> None:
+        """Record API usage for rate limiting."""
+        self.rate_limiter.acquire(blocking=False)
+        if tokens_used > 0:
+            self.rate_limiter.record_tokens(tokens_used)
 
     def _handle_run_command(self, params: Dict[str, Any]) -> ToolResult:
         """Handle the run_command tool."""
@@ -154,6 +531,7 @@ class AIOSShell:
         """Handle the read_file tool."""
         path = params.get("path", "")
         explanation = params.get("explanation", "Reading a file")
+        display_content = params.get("display_content", False)
 
         self.ui.print_executing(explanation)
 
@@ -165,6 +543,11 @@ class AIOSShell:
             success=result.success,
             details={"path": path}
         )
+
+        # Display file content to user if requested
+        if result.success and display_content and result.data:
+            filename = Path(path).name
+            self.ui.print_file_content(result.data, filename)
 
         return ToolResult(
             success=result.success,
@@ -286,39 +669,50 @@ class AIOSShell:
         )
 
     def _handle_system_info(self, params: Dict[str, Any]) -> ToolResult:
-        """Handle the get_system_info tool."""
+        """Handle the get_system_info tool with caching."""
         info_type = params.get("info_type", "general")
         explanation = params.get("explanation", "Getting system information")
 
         self.ui.print_executing(explanation)
 
-        context = self.system.get_context(force_refresh=True)
+        def fetch_system_info():
+            """Fetch fresh system information."""
+            return self.system.get_context(force_refresh=True)
 
+        def fetch_processes():
+            """Fetch process information."""
+            return self.system.get_running_processes(10)
+
+        # Use cached data when available
         if info_type == "disk":
-            if not context.disk_info:
-                return ToolResult(success=True, output="Disk information not available")
-            output = "\n".join(d.to_user_friendly() for d in context.disk_info)
+            output = self.system_cache.get_or_compute(
+                "disk",
+                lambda: self._format_disk_info(fetch_system_info())
+            )
 
         elif info_type == "memory":
-            if not context.memory_info:
-                return ToolResult(success=True, output="Memory information not available")
-            output = context.memory_info.to_user_friendly()
+            output = self.system_cache.get_or_compute(
+                "memory",
+                lambda: self._format_memory_info(fetch_system_info())
+            )
 
         elif info_type == "cpu":
-            output = f"CPU: {context.cpu_count} cores, {context.cpu_percent:.1f}% usage"
+            output = self.system_cache.get_or_compute(
+                "cpu",
+                lambda: self._format_cpu_info(fetch_system_info())
+            )
 
         elif info_type == "processes":
-            processes = self.system.get_running_processes(10)
-            if not processes:
-                output = "Process information not available"
-            else:
-                lines = ["Top processes by CPU usage:"]
-                for p in processes:
-                    lines.append(f"  {p.name}: CPU {p.cpu_percent:.1f}%, Memory {p.memory_percent:.1f}%")
-                output = "\n".join(lines)
+            output = self.system_cache.get_or_compute(
+                "processes",
+                lambda: self._format_processes_info(fetch_processes())
+            )
 
         else:  # general
-            output = context.to_summary()
+            output = self.system_cache.get_or_compute(
+                "general",
+                lambda: fetch_system_info().to_summary()
+            )
 
         self.audit.log(
             ActionType.SYSTEM_INFO,
@@ -327,6 +721,31 @@ class AIOSShell:
         )
 
         return ToolResult(success=True, output=output, user_friendly_message="")
+
+    def _format_disk_info(self, context) -> str:
+        """Format disk information."""
+        if not context.disk_info:
+            return "Disk information not available"
+        return "\n".join(d.to_user_friendly() for d in context.disk_info)
+
+    def _format_memory_info(self, context) -> str:
+        """Format memory information."""
+        if not context.memory_info:
+            return "Memory information not available"
+        return context.memory_info.to_user_friendly()
+
+    def _format_cpu_info(self, context) -> str:
+        """Format CPU information."""
+        return f"CPU: {context.cpu_count} cores, {context.cpu_percent:.1f}% usage"
+
+    def _format_processes_info(self, processes) -> str:
+        """Format processes information."""
+        if not processes:
+            return "Process information not available"
+        lines = ["Top processes by CPU usage:"]
+        for p in processes:
+            lines.append(f"  {p.name}: CPU {p.cpu_percent:.1f}%, Memory {p.memory_percent:.1f}%")
+        return "\n".join(lines)
 
     def _handle_manage_application(self, params: Dict[str, Any]) -> ToolResult:
         """Handle the manage_application tool."""
@@ -504,15 +923,59 @@ class AIOSShell:
             self.ui.print_system_info(summary)
             return True
 
+        if lower_input in ("plugins", "/plugins"):
+            self._show_plugins()
+            return True
+
+        if lower_input in ("recipes", "/recipes"):
+            self._show_recipes()
+            return True
+
+        if lower_input in ("tools", "/tools"):
+            self._show_tools()
+            return True
+
+        if lower_input in ("stats", "/stats"):
+            self._show_stats()
+            return True
+
+        if lower_input in ("credentials", "/credentials"):
+            self._show_credentials()
+            return True
+
+        if lower_input in ("sessions", "/sessions"):
+            self._show_sessions()
+            return True
+
+        if lower_input.startswith("resume ") or lower_input.startswith("/resume "):
+            session_id = user_input.split(" ", 1)[1].strip()
+            self._resume_session(session_id)
+            return True
+
         if not user_input.strip():
             return True
+
+        # Check rate limit before making API call
+        if not self._check_rate_limit():
+            return True
+
+        # Check query cache for informational queries
+        cached_response = None
+        if self.query_cache.is_cacheable(user_input):
+            cached_response = self.query_cache.get(user_input)
+            if cached_response:
+                self.ui.print_response(cached_response)
+                return True
 
         # Log user query
         self.audit.log_user_query(user_input)
         self.session.add_message("user", user_input)
 
-        # Get system context
-        system_context = self.system.get_context().to_summary()
+        # Get system context (now cached)
+        system_context = self.system_cache.get_or_compute(
+            "general",
+            lambda: self.system.get_context().to_summary()
+        )
 
         # Send to Claude with progress indicator and error recovery
         with self.ui.print_thinking() as progress:
@@ -530,6 +993,9 @@ class AIOSShell:
                 )
             )
 
+            # Record API usage
+            self._record_api_usage()
+
             if result.is_err:
                 error_msg = result.error.user_message if result.error else "Unknown error"
                 self.ui.print_error(f"Error communicating with Claude: {error_msg}")
@@ -544,9 +1010,16 @@ class AIOSShell:
             self.ui.print_response(response.text)
             self.session.add_message("assistant", response.text)
 
+            # Cache informational responses (no tool calls = pure info)
+            if not response.tool_calls and self.query_cache.is_cacheable(user_input):
+                self.query_cache.set(user_input, response.text)
+
         # Handle tool calls
         while response.tool_calls:
             tool_results = self._process_tool_calls(response.tool_calls)
+
+            # Record API usage for tool result calls
+            self._record_api_usage()
 
             # Send results back to Claude
             with self.ui.print_thinking() as progress:
@@ -579,9 +1052,21 @@ class AIOSShell:
         self.session.start_session()
         self.running = True
 
+        # Notify plugins of session start
+        self._notify_plugins_session_start()
+
         # Show welcome
         self.ui.clear_screen()
         self.ui.print_welcome()
+
+        # Show loaded plugins info
+        plugin_count = len(self.plugin_manager.list_plugins())
+        if plugin_count > 0:
+            tool_count = len(self.plugin_manager.get_all_tools())
+            recipe_count = len(self.plugin_manager.get_all_recipes())
+            self.ui.print_info(
+                f"Plugins: {plugin_count} loaded, {tool_count} tools, {recipe_count} recipes available"
+            )
 
         # Main loop
         while self.running:
@@ -626,5 +1111,6 @@ class AIOSShell:
                 break
 
         # Cleanup
+        self._notify_plugins_session_end()
         self.session.end_session()
         return 0

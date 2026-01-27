@@ -210,6 +210,78 @@ class TerminalUI:
         else:
             self.console.print(output)
 
+    def print_file_content(
+        self,
+        content: str,
+        filename: str,
+        language: Optional[str] = None,
+        line_numbers: bool = True
+    ) -> None:
+        """Print file content with syntax highlighting."""
+        if not content:
+            self.console.print("[dim]File is empty[/dim]")
+            return
+
+        # Auto-detect language from filename
+        if language is None:
+            ext = Path(filename).suffix.lower()
+            language_map = {
+                '.py': 'python',
+                '.js': 'javascript',
+                '.ts': 'typescript',
+                '.json': 'json',
+                '.yaml': 'yaml',
+                '.yml': 'yaml',
+                '.xml': 'xml',
+                '.html': 'html',
+                '.css': 'css',
+                '.sh': 'bash',
+                '.bash': 'bash',
+                '.zsh': 'bash',
+                '.md': 'markdown',
+                '.sql': 'sql',
+                '.rs': 'rust',
+                '.go': 'go',
+                '.java': 'java',
+                '.c': 'c',
+                '.cpp': 'cpp',
+                '.h': 'c',
+                '.hpp': 'cpp',
+                '.rb': 'ruby',
+                '.php': 'php',
+                '.ini': 'ini',
+                '.toml': 'toml',
+                '.cfg': 'ini',
+                '.conf': 'ini',
+            }
+            language = language_map.get(ext, 'text')
+
+        # Use syntax highlighting for code files
+        if language != 'text':
+            syntax = Syntax(
+                content,
+                language,
+                theme="monokai",
+                line_numbers=line_numbers,
+                word_wrap=True
+            )
+            panel = Panel(
+                syntax,
+                title=f"📄 {filename}",
+                border_style="blue",
+                box=ROUNDED
+            )
+        else:
+            # Plain text - just show in a panel
+            panel = Panel(
+                content,
+                title=f"📄 {filename}",
+                border_style="dim",
+                box=ROUNDED
+            )
+
+        self.console.print(panel)
+
     def print_help(self) -> None:
         """Print help information."""
         help_text = """
@@ -221,7 +293,7 @@ Just talk to me naturally! Here are some things you can ask:
 - "Show me my Documents folder"
 - "Find all my photos"
 - "Create a new folder called Projects"
-- "Rename this file to something better"
+- "Display the contents of config.yaml"
 
 ### System Information
 - "How much disk space do I have?"
@@ -242,9 +314,28 @@ Just talk to me naturally! Here are some things you can ask:
 
 - **exit** / **quit** - Leave AIOS
 - **clear** - Clear the screen
-- **history** - Show recent commands
-- **undo** - Undo the last action (if possible)
+- **history** - Show session history
 - **help** - Show this message
+
+## Plugin Commands
+
+- **plugins** - List loaded plugins
+- **tools** - List available tools
+- **recipes** - List available recipes/workflows
+- **stats** - Show session statistics
+- **credentials** - List stored credentials
+
+## Session Commands
+
+- **sessions** - List previous sessions
+- **resume <id>** - Resume a previous session
+
+## Recipes
+
+Say trigger phrases to run pre-built workflows:
+- "network health check" - Check all network devices
+- "backup network configs" - Backup device configurations
+- "clean up disk" - Find large files and free space
 """
         self.console.print(Markdown(help_text))
 

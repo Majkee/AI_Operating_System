@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 import anthropic
 from anthropic.types import Message, ContentBlock, ToolUseBlock, TextBlock
 
-from .tools import TOOLS, ToolHandler, ToolResult
+from .tools import ToolHandler, ToolResult
 from ..config import get_config
 
 
@@ -155,7 +155,7 @@ class ClaudeClient:
             model=self.model,
             max_tokens=self.max_tokens,
             system=system,
-            tools=TOOLS,
+            tools=self.tool_handler.get_all_tools(),
             messages=messages
         )
 
@@ -220,7 +220,7 @@ class ClaudeClient:
             model=self.model,
             max_tokens=self.max_tokens,
             system=system,
-            tools=TOOLS,
+            tools=self.tool_handler.get_all_tools(),
             messages=self.conversation_history
         )
 

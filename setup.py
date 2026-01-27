@@ -25,7 +25,7 @@ if requirements_path.exists():
 
 setup(
     name="aios",
-    version="0.1.0",
+    version="0.2.0",
     author="AIOS Team",
     author_email="aios@example.com",
     description="AI-powered Operating System Interface - Natural language interface for Linux",
