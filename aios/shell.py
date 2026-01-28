@@ -536,6 +536,191 @@ class AIOSShell:
 
         self.ui.console.print()
 
+    def _interactive_config(self) -> None:
+        """Interactive configuration menu."""
+        from rich.table import Table
+        from rich.box import ROUNDED
+        from prompt_toolkit import prompt
+        from prompt_toolkit.completion import WordCompleter
+        from .models import AVAILABLE_MODELS, get_model_by_id
+        from .config import reset_config
+
+        # Define all configurable settings
+        # Format: (key, section, config_key, type, description, options_func)
+        # options_func returns list of (value, label) for selection, or None for free input
+        settings = [
+            ("api.streaming", "api", "streaming", "bool",
+             "Stream responses word-by-word", None),
+            ("api.model", "api", "model", "choice",
+             "AI model to use",
+             lambda: [(m.id, f"{m.name} ({m.speed}, {m.cost} cost)") for m in AVAILABLE_MODELS]),
+            ("api.max_tokens", "api", "max_tokens", "int",
+             "Max tokens per response (100-100000)", None),
+            ("ui.show_technical_details", "ui", "show_technical_details", "bool",
+             "Show technical details and commands", None),
+            ("ui.show_commands", "ui", "show_commands", "bool",
+             "Show commands being executed", None),
+            ("ui.use_colors", "ui", "use_colors", "bool",
+             "Use colors in terminal output", None),
+            ("safety.require_confirmation", "safety", "require_confirmation", "bool",
+             "Require confirmation for dangerous commands", None),
+            ("code.enabled", "code", "enabled", "bool",
+             "Enable Claude Code integration", None),
+            ("code.auto_detect", "code", "auto_detect", "bool",
+             "Auto-detect and route coding requests", None),
+        ]
+
+        def get_current_value(key: str):
+            """Get current value for a setting."""
+            parts = key.split(".")
+            obj = self.config
+            for part in parts:
+                obj = getattr(obj, part)
+            return obj
+
+        def format_value(value, value_type: str) -> str:
+            """Format a value for display."""
+            if value_type == "bool":
+                return "[green]ON[/green]" if value else "[red]OFF[/red]"
+            return str(value)
+
+        while True:
+            # Display current settings
+            self.ui.console.print("\n[bold cyan]Configuration Settings[/bold cyan]\n")
+
+            table = Table(box=ROUNDED, show_header=True, header_style="bold")
+            table.add_column("#", style="dim", width=3)
+            table.add_column("Setting", style="cyan")
+            table.add_column("Value", width=20)
+            table.add_column("Description", style="dim")
+
+            for i, (key, section, config_key, value_type, description, _) in enumerate(settings, 1):
+                current = get_current_value(key)
+                value_str = format_value(current, value_type)
+                table.add_row(str(i), key, value_str, description)
+
+            self.ui.console.print(table)
+            self.ui.console.print()
+            self.ui.console.print("[dim]Enter number to change setting, or 0 to exit[/dim]")
+
+            # Get user selection
+            try:
+                choice_str = prompt("Select setting: ").strip()
+                if not choice_str or choice_str == "0":
+                    break
+
+                choice = int(choice_str)
+                if choice < 1 or choice > len(settings):
+                    self.ui.print_error("Invalid selection")
+                    continue
+
+                # Get the selected setting
+                key, section, config_key, value_type, description, options_func = settings[choice - 1]
+                current_value = get_current_value(key)
+
+                self.ui.console.print(f"\n[bold]Changing: {key}[/bold]")
+                self.ui.console.print(f"[dim]Current value: {current_value}[/dim]\n")
+
+                new_value = None
+                toml_value = None
+
+                if value_type == "bool":
+                    # Toggle or select true/false
+                    self.ui.console.print("  [cyan]1.[/cyan] ON (true)")
+                    self.ui.console.print("  [cyan]2.[/cyan] OFF (false)")
+                    self.ui.console.print("  [dim]0. Cancel[/dim]\n")
+
+                    bool_choice = prompt("Select: ").strip()
+                    if bool_choice == "1":
+                        new_value = True
+                        toml_value = "true"
+                    elif bool_choice == "2":
+                        new_value = False
+                        toml_value = "false"
+                    else:
+                        self.ui.print_info("Cancelled")
+                        continue
+
+                elif value_type == "choice" and options_func:
+                    # Show options from the function
+                    options = options_func()
+                    for i, (val, label) in enumerate(options, 1):
+                        marker = "[green]>[/green]" if val == current_value else " "
+                        self.ui.console.print(f"  {marker} [cyan]{i}.[/cyan] {label}")
+                    self.ui.console.print("  [dim]0. Cancel[/dim]\n")
+
+                    opt_choice = prompt("Select: ").strip()
+                    if opt_choice == "0" or not opt_choice:
+                        self.ui.print_info("Cancelled")
+                        continue
+
+                    try:
+                        opt_idx = int(opt_choice) - 1
+                        if 0 <= opt_idx < len(options):
+                            new_value = options[opt_idx][0]
+                            toml_value = f'"{new_value}"'
+                        else:
+                            self.ui.print_error("Invalid selection")
+                            continue
+                    except ValueError:
+                        self.ui.print_error("Invalid selection")
+                        continue
+
+                elif value_type == "int":
+                    # Free input with validation
+                    int_input = prompt(f"Enter value (100-100000) [{current_value}]: ").strip()
+                    if not int_input:
+                        self.ui.print_info("Cancelled")
+                        continue
+
+                    try:
+                        new_value = int(int_input)
+                        if new_value < 100 or new_value > 100000:
+                            self.ui.print_error("Value must be between 100 and 100000")
+                            continue
+                        toml_value = str(new_value)
+                    except ValueError:
+                        self.ui.print_error("Invalid number")
+                        continue
+
+                # Save the new value
+                if new_value is not None and toml_value is not None:
+                    config_file = Path.home() / ".config" / "aios" / "config.toml"
+                    try:
+                        _update_toml_value(config_file, section, config_key, toml_value)
+                    except Exception as e:
+                        self.ui.print_error(f"Failed to save: {e}")
+                        continue
+
+                    # Reload config
+                    reset_config()
+                    self.config = get_config()
+
+                    # Apply immediate changes
+                    if key == "api.model" and self.claude:
+                        self.claude.model = new_value
+                        self.claude.clear_history()
+                        self.ui.print_info("[dim]Conversation history cleared[/dim]")
+
+                    if key == "ui.show_technical_details":
+                        self.ui.show_technical = new_value
+
+                    if key == "ui.show_commands":
+                        self.ui.show_commands = new_value
+
+                    self.ui.print_success(f"Set {key} = {new_value}")
+
+            except KeyboardInterrupt:
+                self.ui.console.print()
+                break
+            except EOFError:
+                break
+            except ValueError:
+                self.ui.print_error("Please enter a number")
+                continue
+
+        self.ui.console.print()
+
     def _show_models(self) -> None:
         """Display available models and current selection."""
         from .models import AVAILABLE_MODELS, get_model_by_id
@@ -1545,6 +1730,10 @@ class AIOSShell:
             self._show_stats()
             return True
 
+        if lower_input in ("config", "/config"):
+            self._interactive_config()
+            return True
+
         if lower_input in ("credentials", "/credentials"):
             self._show_credentials()
             return True
@@ -1619,36 +1808,24 @@ class AIOSShell:
             lambda: self.system.get_context().to_summary()
         )
 
-        # Send to Claude with progress indicator and error recovery
-        with self.ui.print_thinking() as progress:
-            task = progress.add_task("Thinking...", total=None)
+        # Send to Claude with streaming (if enabled) or blocking request
+        use_streaming = getattr(self.config.api, 'streaming', True)
 
-            # Use retry for API calls (network issues may be transient)
-            def send_to_claude():
-                return self.claude.send_message(user_input, system_context)
-
-            result = ErrorRecovery.retry(
-                send_to_claude,
-                max_attempts=2,
-                on_retry=lambda attempt, exc: self.ui.print_info(
-                    f"Retrying... (attempt {attempt + 1})"
-                )
-            )
-
-            # Record API usage
-            self._record_api_usage()
-
-            if result.is_err:
-                error_msg = result.error.user_message if result.error else "Unknown error"
-                self.ui.print_error(f"Error communicating with Claude: {error_msg}")
-                if result.error and result.error.suggested_action:
-                    self.ui.print_info(f"Suggestion: {result.error.suggested_action}")
+        with self.ui.streaming_response() as handler:
+            try:
+                on_text = handler.add_text if use_streaming else None
+                response = self.claude.send_message(user_input, system_context, on_text=on_text)
+            except Exception as exc:
+                self.ui.print_error(f"Error communicating with Claude: {exc}")
                 return True
 
-            response = result.value
+        # Record API usage
+        self._record_api_usage()
 
-        # Process response
-        if response.text:
+        # Process response - streamed text was already displayed, non-streamed needs print
+        if handler.streamed_text:
+            self.session.add_message("assistant", handler.streamed_text)
+        elif response.text:
             self.ui.print_response(response.text)
             self.session.add_message("assistant", response.text)
 
@@ -1656,16 +1833,22 @@ class AIOSShell:
         while response.tool_calls:
             tool_results = self._process_tool_calls(response.tool_calls)
 
+            # Send results back to Claude with streaming
+            with self.ui.streaming_response() as handler:
+                try:
+                    on_text = handler.add_text if use_streaming else None
+                    response = self.claude.send_tool_results(tool_results, system_context, on_text=on_text)
+                except Exception as exc:
+                    self.ui.print_error(f"Error communicating with Claude: {exc}")
+                    return True
+
             # Record API usage for tool result calls
             self._record_api_usage()
 
-            # Send results back to Claude
-            with self.ui.print_thinking() as progress:
-                task = progress.add_task("Thinking...", total=None)
-                response = self.claude.send_tool_results(tool_results, system_context)
-
-            # Show any text response
-            if response.text:
+            # Show any text response - streamed text was already displayed
+            if handler.streamed_text:
+                self.session.add_message("assistant", handler.streamed_text)
+            elif response.text:
                 self.ui.print_response(response.text)
                 self.session.add_message("assistant", response.text)
 

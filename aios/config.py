@@ -25,6 +25,7 @@ class APIConfig(BaseModel):
     api_key: Optional[str] = Field(default=None, description="Anthropic API key")
     model: str = Field(default="claude-sonnet-4-5-20250929", description="Model to use")
     max_tokens: int = Field(default=4096, description="Max tokens per response")
+    streaming: bool = Field(default=True, description="Stream responses word-by-word")
 
 
 class SafetyConfig(BaseModel):

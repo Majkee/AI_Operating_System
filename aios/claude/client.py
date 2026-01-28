@@ -5,7 +5,7 @@ Handles communication with the Anthropic API and processes
 tool calls from Claude's responses.
 """
 
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from dataclasses import dataclass, field
 
 import anthropic
@@ -144,6 +144,50 @@ class ClaudeClient:
         messages.append({"role": "user", "content": user_input})
         return messages
 
+    def _build_system_prompt(self, system_context: Optional[str] = None) -> str:
+        """Build system prompt with optional context."""
+        if system_context:
+            return f"{SYSTEM_PROMPT}\n\n## Current System Context\n{system_context}"
+        return SYSTEM_PROMPT
+
+    def _store_assistant_history(self, response: "AssistantResponse") -> None:
+        """Store assistant response in conversation history."""
+        assistant_content = []
+        if response.text:
+            assistant_content.append({
+                "type": "text",
+                "text": response.text
+            })
+        for tool_call in response.tool_calls:
+            assistant_content.append({
+                "type": "tool_use",
+                "id": tool_call["id"],
+                "name": tool_call["name"],
+                "input": tool_call["input"]
+            })
+        self.conversation_history.append({
+            "role": "assistant",
+            "content": assistant_content
+        })
+
+    def _stream_request(
+        self,
+        system: str,
+        messages: list,
+        on_text: Callable[[str], None]
+    ) -> "Message":
+        """Make a streaming API request, invoking callback for each text delta."""
+        with self.client.messages.stream(
+            model=self.model,
+            max_tokens=self.max_tokens,
+            system=system,
+            tools=self.tool_handler.get_all_tools(),
+            messages=messages,
+        ) as stream:
+            for text in stream.text_stream:
+                on_text(text)
+            return stream.get_final_message()
+
     def _process_response(self, response: Message) -> AssistantResponse:
         """Process Claude's response and extract text and tool calls."""
         text_parts = []
@@ -177,23 +221,34 @@ class ClaudeClient:
     def send_message(
         self,
         user_input: str,
-        system_context: Optional[str] = None
+        system_context: Optional[str] = None,
+        on_text: Optional[Callable[[str], None]] = None
     ) -> AssistantResponse:
-        """Send a message to Claude and get a response."""
+        """Send a message to Claude and get a response.
+
+        Args:
+            user_input: The user's message
+            system_context: Optional system context to append to prompt
+            on_text: Optional callback for streaming text deltas. When provided,
+                     uses streaming API; when None, uses blocking API.
+
+        Returns:
+            AssistantResponse with text and any tool calls
+        """
         messages = self._build_messages(user_input)
+        system = self._build_system_prompt(system_context)
 
-        # Build system prompt with optional context
-        system = SYSTEM_PROMPT
-        if system_context:
-            system = f"{SYSTEM_PROMPT}\n\n## Current System Context\n{system_context}"
-
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=self.max_tokens,
-            system=system,
-            tools=self.tool_handler.get_all_tools(),
-            messages=messages
-        )
+        # Make API request (streaming or blocking)
+        if on_text is not None:
+            response = self._stream_request(system, messages, on_text)
+        else:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                system=system,
+                tools=self.tool_handler.get_all_tools(),
+                messages=messages
+            )
 
         # Add user message to history
         self.conversation_history.append({
@@ -203,35 +258,27 @@ class ClaudeClient:
 
         # Process and store assistant response
         assistant_response = self._process_response(response)
-
-        # Build assistant message content for history
-        assistant_content = []
-        if assistant_response.text:
-            assistant_content.append({
-                "type": "text",
-                "text": assistant_response.text
-            })
-        for tool_call in assistant_response.tool_calls:
-            assistant_content.append({
-                "type": "tool_use",
-                "id": tool_call["id"],
-                "name": tool_call["name"],
-                "input": tool_call["input"]
-            })
-
-        self.conversation_history.append({
-            "role": "assistant",
-            "content": assistant_content
-        })
+        self._store_assistant_history(assistant_response)
 
         return assistant_response
 
     def send_tool_results(
         self,
         tool_results: list[dict[str, Any]],
-        system_context: Optional[str] = None
+        system_context: Optional[str] = None,
+        on_text: Optional[Callable[[str], None]] = None
     ) -> AssistantResponse:
-        """Send tool execution results back to Claude."""
+        """Send tool execution results back to Claude.
+
+        Args:
+            tool_results: List of tool execution results
+            system_context: Optional system context to append to prompt
+            on_text: Optional callback for streaming text deltas. When provided,
+                     uses streaming API; when None, uses blocking API.
+
+        Returns:
+            AssistantResponse with text and any tool calls
+        """
         # Add tool results to conversation
         tool_result_content = []
         for result in tool_results:
@@ -247,40 +294,22 @@ class ClaudeClient:
             "content": tool_result_content
         })
 
-        # Build system prompt
-        system = SYSTEM_PROMPT
-        if system_context:
-            system = f"{SYSTEM_PROMPT}\n\n## Current System Context\n{system_context}"
+        system = self._build_system_prompt(system_context)
 
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=self.max_tokens,
-            system=system,
-            tools=self.tool_handler.get_all_tools(),
-            messages=self.conversation_history
-        )
+        # Make API request (streaming or blocking)
+        if on_text is not None:
+            response = self._stream_request(system, self.conversation_history, on_text)
+        else:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                system=system,
+                tools=self.tool_handler.get_all_tools(),
+                messages=self.conversation_history
+            )
 
         assistant_response = self._process_response(response)
-
-        # Store assistant response
-        assistant_content = []
-        if assistant_response.text:
-            assistant_content.append({
-                "type": "text",
-                "text": assistant_response.text
-            })
-        for tool_call in assistant_response.tool_calls:
-            assistant_content.append({
-                "type": "tool_use",
-                "id": tool_call["id"],
-                "name": tool_call["name"],
-                "input": tool_call["input"]
-            })
-
-        self.conversation_history.append({
-            "role": "assistant",
-            "content": assistant_content
-        })
+        self._store_assistant_history(assistant_response)
 
         return assistant_response
 

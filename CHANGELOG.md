@@ -5,6 +5,55 @@ All notable changes to AIOS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-01-28
+
+### Added
+
+#### Streaming Responses
+- Real-time word-by-word streaming of Claude's responses for a modern chat experience
+- `StreamingResponseHandler` context manager in `aios/ui/terminal.py` — manages spinner → live Markdown transition
+- `_stream_request()` method in `ClaudeClient` using `client.messages.stream()` API
+- `on_text` callback parameter on `send_message()` and `send_tool_results()` methods
+- `streaming` config option under `[api]` section (default: `true`)
+- Smooth visual transition: spinner while waiting, then live-updating Markdown as text arrives
+- Configurable: disable streaming via config for debugging or slow terminals
+
+#### Interactive Configuration Menu
+- `config` / `/config` command opens an interactive settings menu
+- Table display of all configurable settings with current values
+- Number-based selection to change any setting
+- Boolean settings show ON/OFF toggle menu
+- Model selection shows dropdown of all available models with descriptions (speed, cost)
+- Numeric settings prompt for input with validation
+- Changes saved immediately to `~/.config/aios/config.toml`
+- Settings take effect immediately without restart
+
+#### Helper Methods (Code Quality)
+- `_build_system_prompt()` — deduplicated system prompt construction
+- `_store_assistant_history()` — deduplicated conversation history storage
+
+#### Tests
+- 16 new tests in `tests/test_streaming.py`:
+  - `TestClaudeClientHelpers` (5): `_build_system_prompt` with/without context, `_store_assistant_history` text-only/tool-calls/mixed
+  - `TestStreamingResponseHandler` (5): spinner start, no-text exit, first-text transition, text accumulation, live display updates
+  - `TestAPIConfigStreaming` (2): default true, can be disabled
+  - `TestSendMessageStreaming` (2): no `on_text` uses `create()`, with `on_text` uses `stream()`
+  - `TestSendToolResultsStreaming` (2): same streaming/blocking branch tests
+
+### Changed
+- `aios/claude/client.py` — added `Callable` import; added helper methods; `send_message()` and `send_tool_results()` accept optional `on_text` callback for streaming
+- `aios/ui/terminal.py` — added `StreamingResponseHandler` class; added `streaming_response()` factory method to `TerminalUI`; updated help text
+- `aios/shell.py` — `_handle_user_input()` uses `streaming_response()` handler; replaced `ErrorRecovery.retry` with try/except for streaming compatibility; added `_interactive_config()` method
+- `aios/config.py` — `APIConfig` gains `streaming: bool = True` field
+- `aios/data/default.toml` — added `streaming = true` under `[api]`
+- `config/default.toml` — added `streaming = true` under `[api]`
+- `aios/ui/completions.py` — added `config` to command registry
+
+### Removed
+- `config set <key> <value>` command-line syntax (replaced by interactive menu)
+
+---
+
 ## [0.6.0] - 2026-01-28
 
 ### Added

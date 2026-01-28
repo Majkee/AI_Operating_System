@@ -4,7 +4,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/aiosys.svg)](https://pypi.org/project/aiosys/)
 [![Docker Hub](https://img.shields.io/docker/v/majkee/aios?label=docker%20hub)](https://hub.docker.com/r/majkee/aios)
-[![Tests](https://img.shields.io/badge/tests-398%20passed-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-414%20passed-brightgreen.svg)](#testing)
 [![Code style: PEP8](https://img.shields.io/badge/code%20style-pep8-green.svg)](https://www.python.org/dev/peps/pep-0008/)
 
 **Talk to your Linux system in plain English.** AIOS is a natural language interface powered by Claude that makes Linux accessible to everyone -- no command line experience required.
@@ -190,6 +190,15 @@ Built-in support for privileged and long-running operations:
 - **Live streaming output**: `long_running` flag streams real-time progress in a compact live display
 - **Smart guidance**: System prompt teaches Claude when to use sudo, how to set timeouts, and when to stream
 
+### Streaming Responses
+
+Real-time response streaming for a modern chat experience:
+
+- **Word-by-word streaming**: Watch responses appear as Claude thinks
+- **Smooth transitions**: Spinner → live Markdown rendering
+- **Configurable**: Disable via `config` menu or config file
+- **No latency penalty**: Same API, better UX
+
 ### Beautiful Interface
 
 - Rich, colorful terminal output with syntax highlighting
@@ -223,6 +232,14 @@ require_confirmation = true     # Confirm risky operations
 | `help` | Show help information |
 | `clear` | Clear the screen |
 | `history` | Show session history |
+
+### Configuration
+
+| Command | Description |
+|---------|-------------|
+| `config` / `/config` | Interactive settings menu |
+| `model` / `/model` | List available AI models |
+| `model <id>` | Switch to a different model |
 
 ### Plugins & Tools
 
@@ -324,6 +341,7 @@ Configuration is loaded from (in order of priority):
 api_key = ""                    # Anthropic API key (prefer env var)
 model = "claude-sonnet-4-5-20250929"     # Model to use
 max_tokens = 4096               # Max response tokens
+streaming = true                # Stream responses word-by-word
 
 [safety]
 require_confirmation = true     # Confirm dangerous actions
@@ -357,7 +375,7 @@ auto_detect_sensitivity = "moderate"  # high, moderate, low
 
 ## Testing
 
-AIOS has a comprehensive test suite with 398 tests covering all major systems.
+AIOS has a comprehensive test suite with 414 tests covering all major systems.
 
 ```bash
 # Install test dependencies
@@ -392,7 +410,8 @@ pytest tests/test_ratelimit.py -v
 | Session Management | 18 |
 | Sudo / Timeout / Streaming | 18 |
 | Background Tasks | 33 |
-| Tab Completions | 18 |
+| Tab Completions | 27 |
+| Streaming | 16 |
 
 CI runs automatically on every push and PR. See [CI.md](CI.md) for details.
 
@@ -478,6 +497,8 @@ AIOS takes security seriously. See [SECURITY.md](SECURITY.md) for:
 - [x] Background tasks with interactive browser and Ctrl+C-to-background
 - [x] PyPI package, install script, Docker Hub, and Snap distribution
 - [x] Claude Code interactive integration with auth chooser
+- [x] Streaming responses with real-time Markdown rendering
+- [x] Interactive configuration menu
 - [ ] Web-based interface option
 - [ ] Multi-language support
 - [ ] Voice input integration

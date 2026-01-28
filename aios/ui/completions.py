@@ -68,6 +68,12 @@ COMMAND_REGISTRY = [
         "has_arg": False,
     },
     {
+        "name": "config",
+        "aliases": ["/config"],
+        "help": "Interactive settings menu",
+        "has_arg": False,
+    },
+    {
         "name": "credentials",
         "aliases": ["/credentials"],
         "help": "Manage stored credentials for plugins",
@@ -232,6 +238,7 @@ class AIOSCompleter(Completer):
                     start_position=-len(prefix),
                     display_meta="code session",
                 )
+
 
 
 # ---------------------------------------------------------------------------

@@ -12,6 +12,9 @@ model = "claude-sonnet-4-5-20250929"
 # Maximum tokens per response
 max_tokens = 4096
 
+# Stream responses word-by-word (disable for debugging or slow terminals)
+streaming = true
+
 [safety]
 # Require confirmation for potentially dangerous commands
 require_confirmation = true

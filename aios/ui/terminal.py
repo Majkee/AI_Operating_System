@@ -79,6 +79,76 @@ class StreamingDisplay:
         )
 
 
+class StreamingResponseHandler:
+    """Context manager for streaming Claude responses with spinner → live Markdown transition.
+
+    Usage:
+        with ui.streaming_response() as handler:
+            response = claude.send_message(input, on_text=handler.add_text)
+        # After exiting, handler.streamed_text contains the full response
+    """
+
+    def __init__(self, console: Console):
+        self._console = console
+        self._buffer = ""
+        self._spinner: Optional[Progress] = None
+        self._spinner_task = None
+        self._live: Optional[Live] = None
+        self._header_printed = False
+
+    def __enter__(self):
+        # Start with a spinner
+        self._spinner = Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]{task.description}"),
+            console=self._console,
+            transient=True
+        )
+        self._spinner.__enter__()
+        self._spinner_task = self._spinner.add_task("Thinking...", total=None)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # Clean up Live display if active
+        if self._live is not None:
+            self._live.__exit__(exc_type, exc_val, exc_tb)
+            self._console.print()  # Add blank line after response
+        # Clean up spinner if still active (no text was streamed)
+        if self._spinner is not None and self._live is None:
+            self._spinner.__exit__(exc_type, exc_val, exc_tb)
+        return False
+
+    def add_text(self, delta: str) -> None:
+        """Add a text delta to the streaming response."""
+        # On first text, transition from spinner to live Markdown
+        if not self._header_printed:
+            # Stop the spinner
+            if self._spinner is not None:
+                self._spinner.__exit__(None, None, None)
+            # Print the header
+            self._console.print()
+            self._console.print("[bold green]AIOS:[/bold green]")
+            # Start Live display
+            self._live = Live(
+                Markdown(""),
+                console=self._console,
+                refresh_per_second=12,
+                transient=False
+            )
+            self._live.__enter__()
+            self._header_printed = True
+
+        # Append delta and update display
+        self._buffer += delta
+        if self._live is not None:
+            self._live.update(Markdown(self._buffer))
+
+    @property
+    def streamed_text(self) -> str:
+        """Return the accumulated streamed text."""
+        return self._buffer
+
+
 class TerminalUI:
     """Rich terminal interface for AIOS."""
 
@@ -260,6 +330,10 @@ class TerminalUI:
         """Return a StreamingDisplay context manager for live output."""
         return StreamingDisplay(self.console, description)
 
+    def streaming_response(self) -> StreamingResponseHandler:
+        """Return a StreamingResponseHandler for streaming Claude responses."""
+        return StreamingResponseHandler(self.console)
+
     def print_output(self, output: str, title: Optional[str] = None) -> None:
         """Print command output."""
         if not output.strip():
@@ -377,6 +451,12 @@ Just talk to me naturally! Here are some things you can ask:
 - **clear** - Clear the screen
 - **history** - Show session history
 - **help** - Show this message
+
+## Configuration
+
+- **config** - Interactive settings menu
+- **model** - List available AI models
+- **model <id>** - Switch to a different model
 
 ## Plugin Commands
 
