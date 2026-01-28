@@ -375,7 +375,7 @@ class TestIntegration:
              patch("aios.shell.AuditLogger"), \
              patch("aios.shell.get_plugin_manager"), \
              patch("aios.shell.get_system_info_cache"), \
-             patch("aios.shell.get_query_cache"), \
+             patch("aios.shell.get_tool_result_cache"), \
              patch("aios.shell.get_rate_limiter"), \
              patch("aios.shell.configure_rate_limiter"), \
              patch("aios.shell.PromptSession"), \

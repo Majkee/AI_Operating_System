@@ -64,8 +64,7 @@ USER aios
 # Add venv to PATH
 ENV PATH="/app/venv/bin:$PATH"
 
-# Environment variable for Anthropic API key (must be provided at runtime)
-ENV ANTHROPIC_API_KEY=""
+# Anthropic API key must be provided at runtime via: docker run -e ANTHROPIC_API_KEY=sk-...
 
 # Default command
 CMD ["aios"]

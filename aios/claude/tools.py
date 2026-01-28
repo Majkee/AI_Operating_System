@@ -316,6 +316,11 @@ class ToolHandler:
     def __init__(self):
         self._handlers: dict[str, Callable] = {}
         self._tool_definitions: List[Dict[str, Any]] = []
+        self._cache = None
+
+    def set_cache(self, cache) -> None:
+        """Attach a ToolResultCache so execute() can check/store results."""
+        self._cache = cache
 
     def register(self, tool_name: str, handler: Callable) -> None:
         """Register a handler function for a tool."""
@@ -350,16 +355,29 @@ class ToolHandler:
                 user_friendly_message=f"I don't know how to do that yet."
             )
 
+        # Cache lookup
+        if self._cache is not None:
+            cached = self._cache.get(tool_name, tool_input)
+            if cached is not None:
+                return cached
+
         try:
             handler = self._handlers[tool_name]
-            return handler(tool_input)
+            result = handler(tool_input)
         except Exception as e:
-            return ToolResult(
+            result = ToolResult(
                 success=False,
                 output="",
                 error=str(e),
                 user_friendly_message=f"Something went wrong: {str(e)}"
             )
+
+        # Cache store + invalidation (no-ops for non-cacheable tools)
+        if self._cache is not None:
+            self._cache.set(tool_name, tool_input, result)
+            self._cache.process_invalidations(tool_name, tool_input)
+
+        return result
 
     def get_tool_names(self) -> list[str]:
         """Get list of registered tool names."""

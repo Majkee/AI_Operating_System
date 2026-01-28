@@ -4,13 +4,13 @@ Caching system for AIOS.
 Provides:
 - LRU cache for expensive operations
 - TTL-based cache for system info
-- Query result caching
+- Tool result caching
 """
 
 import hashlib
 import json
 import time
-from typing import Any, Optional, Callable, TypeVar, Generic
+from typing import Any, Dict, List, Optional, Callable, Set, TypeVar, Generic
 from dataclasses import dataclass, field
 from collections import OrderedDict
 from functools import wraps
@@ -339,88 +339,152 @@ class SystemInfoCache:
         }
 
 
-class QueryCache:
-    """
-    Cache for Claude API query results.
+@dataclass
+class ToolCacheConfig:
+    """Configuration for caching a specific tool's results."""
+    cacheable: bool = False
+    ttl: float = 60.0
+    key_params: Optional[List[str]] = None  # None = all params minus "explanation"
 
-    Useful for repeated questions about the same topic.
-    Note: Only caches pure informational queries, not actions.
+
+class ToolResultCache:
+    """
+    Cache for tool execution results.
+
+    Instead of caching Claude's prose responses (which are fragile and
+    pattern-dependent), this caches the raw ToolResult from tool handlers.
+    Claude still generates a fresh response each time, but the expensive
+    tool execution (subprocess calls, psutil, file I/O) is avoided on
+    cache hits.
     """
 
-    def __init__(self, max_size: int = 50, ttl: float = 600):
-        """
-        Initialize query cache.
+    _EXCLUDED_PARAMS = {"explanation"}
+
+    def __init__(self, max_size: int = 200, default_ttl: float = 60.0):
+        self._cache: LRUCache = LRUCache(max_size=max_size, default_ttl=default_ttl)
+        self._tool_configs: Dict[str, ToolCacheConfig] = {}
+        self._invalidation_rules: Dict[str, List[dict]] = {}
+        self._tool_key_index: Dict[str, Set[str]] = {}
+        self._index_lock = Lock()
+
+    def configure_tool(self, tool_name: str, config: ToolCacheConfig) -> None:
+        """Register caching configuration for a tool."""
+        self._tool_configs[tool_name] = config
+
+    def add_invalidation_rule(
+        self,
+        trigger_tool: str,
+        target_tool: str,
+        key_transform: Optional[Callable] = None,
+    ) -> None:
+        """Add a rule: when *trigger_tool* executes, invalidate *target_tool* entries.
 
         Args:
-            max_size: Maximum number of queries to cache
-            ttl: Time-to-live in seconds (default: 10 minutes)
+            trigger_tool: The tool whose execution triggers invalidation.
+            target_tool: The tool whose cached results should be invalidated.
+            key_transform: Optional callable(tool_input) -> specific cache key
+                           to invalidate.  If None, all entries for *target_tool*
+                           are wiped.
         """
-        self._cache = LRUCache(max_size=max_size, default_ttl=ttl)
-        self._cacheable_patterns = [
-            "what is",
-            "how do i",
-            "explain",
-            "show me",
-            "list",
-            "where is",
-            "help me understand",
-        ]
+        self._invalidation_rules.setdefault(trigger_tool, []).append({
+            "target_tool": target_tool,
+            "key_transform": key_transform,
+        })
 
-    def is_cacheable(self, query: str) -> bool:
-        """
-        Determine if a query result should be cached.
+    def make_cache_key(self, tool_name: str, tool_input: dict) -> str:
+        """Build a deterministic cache key for a tool invocation."""
+        config = self._tool_configs.get(tool_name)
 
-        Only informational queries should be cached, not action queries.
-        """
-        query_lower = query.lower().strip()
+        if config and config.key_params is not None:
+            filtered = {k: tool_input.get(k) for k in config.key_params}
+        else:
+            filtered = {
+                k: v for k, v in tool_input.items()
+                if k not in self._EXCLUDED_PARAMS
+            }
 
-        # Don't cache short queries
-        if len(query_lower) < 10:
-            return False
+        return _generate_key(tool_name, (), filtered)
 
-        # Don't cache action-oriented queries
-        action_words = ["delete", "remove", "install", "create", "write", "modify", "change"]
-        if any(word in query_lower for word in action_words):
-            return False
+    # ------------------------------------------------------------------
+    # Core get / set
+    # ------------------------------------------------------------------
 
-        # Cache queries that look informational
-        return any(pattern in query_lower for pattern in self._cacheable_patterns)
-
-    def get_key(self, query: str, context_hash: Optional[str] = None) -> str:
-        """Generate cache key for a query."""
-        normalized = query.lower().strip()
-        key_parts = [normalized]
-        if context_hash:
-            key_parts.append(context_hash)
-        return _generate_key("query", tuple(key_parts), {})
-
-    def get(self, query: str, context_hash: Optional[str] = None) -> Optional[str]:
-        """Get cached response for a query."""
-        if not self.is_cacheable(query):
+    def get(self, tool_name: str, tool_input: dict) -> Any:
+        """Return cached ToolResult or None."""
+        config = self._tool_configs.get(tool_name)
+        if not config or not config.cacheable:
             return None
-        key = self.get_key(query, context_hash)
+
+        key = self.make_cache_key(tool_name, tool_input)
         return self._cache.get(key)
 
-    def set(self, query: str, response: str, context_hash: Optional[str] = None) -> None:
-        """Cache a query response."""
-        if not self.is_cacheable(query):
+    def set(self, tool_name: str, tool_input: dict, result: Any) -> None:
+        """Cache a successful ToolResult.  Failed results are never cached."""
+        config = self._tool_configs.get(tool_name)
+        if not config or not config.cacheable:
             return
-        key = self.get_key(query, context_hash)
-        self._cache.set(key, response)
+
+        # Never cache failures
+        if not getattr(result, "success", True):
+            return
+
+        key = self.make_cache_key(tool_name, tool_input)
+        self._cache.set(key, result, ttl=config.ttl)
+
+        with self._index_lock:
+            self._tool_key_index.setdefault(tool_name, set()).add(key)
+
+    # ------------------------------------------------------------------
+    # Invalidation
+    # ------------------------------------------------------------------
+
+    def process_invalidations(self, trigger_tool: str, tool_input: dict) -> None:
+        """Run all invalidation rules triggered by *trigger_tool*."""
+        rules = self._invalidation_rules.get(trigger_tool)
+        if not rules:
+            return
+
+        for rule in rules:
+            target = rule["target_tool"]
+            key_transform = rule["key_transform"]
+
+            if key_transform is not None:
+                specific_key = key_transform(tool_input)
+                if specific_key is not None:
+                    self._cache.delete(specific_key)
+                    with self._index_lock:
+                        keys = self._tool_key_index.get(target)
+                        if keys:
+                            keys.discard(specific_key)
+            else:
+                self._invalidate_by_tool(target)
+
+    def _invalidate_by_tool(self, tool_name: str) -> int:
+        """Remove all cached entries for *tool_name*."""
+        with self._index_lock:
+            keys = self._tool_key_index.pop(tool_name, set())
+
+        count = 0
+        for key in keys:
+            if self._cache.delete(key):
+                count += 1
+        return count
 
     def clear(self) -> None:
-        """Clear the query cache."""
+        """Remove all entries."""
         self._cache.clear()
+        with self._index_lock:
+            self._tool_key_index.clear()
 
     @property
     def stats(self) -> dict:
-        """Get cache statistics."""
+        """Cache statistics."""
         return self._cache.stats
 
 
 # Global cache instances
 _system_info_cache: Optional[SystemInfoCache] = None
-_query_cache: Optional[QueryCache] = None
+_tool_result_cache: Optional['ToolResultCache'] = None
 
 
 def get_system_info_cache() -> SystemInfoCache:
@@ -431,9 +495,9 @@ def get_system_info_cache() -> SystemInfoCache:
     return _system_info_cache
 
 
-def get_query_cache() -> QueryCache:
-    """Get the global query cache instance."""
-    global _query_cache
-    if _query_cache is None:
-        _query_cache = QueryCache()
-    return _query_cache
+def get_tool_result_cache() -> ToolResultCache:
+    """Get the global tool result cache instance."""
+    global _tool_result_cache
+    if _tool_result_cache is None:
+        _tool_result_cache = ToolResultCache()
+    return _tool_result_cache

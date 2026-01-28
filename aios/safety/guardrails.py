@@ -213,7 +213,7 @@ class SafetyGuard:
                 )
 
         # Config files
-        if "/.config/" in path or path.startswith("/home") and "/." in path:
+        if ("/.config/" in path) or (path.startswith("/home") and "/." in path):
             return SafetyCheck(
                 risk_level=RiskLevel.MODERATE,
                 is_allowed=True,

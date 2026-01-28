@@ -1,4 +1,4 @@
-# AIOS v0.5.0 Manual Test Checklist
+# AIOS v0.6.0 Manual Test Checklist
 
 Run these tests to verify all features work end-to-end.
 Mark each test with `[x]` when passed or `[!]` if failed.
@@ -88,21 +88,22 @@ cp plugins/ansible_network.py ~/.config/aios/plugins/         # local
 
 ## 3. Caching System
 
-### System Info Cache
+### Tool Result Cache
 
-- [ ] **3.1** Ask "How much disk space do I have?" -- should get response (cache miss)
-- [ ] **3.2** Immediately ask the same question again -- should respond faster (cache hit)
-- [ ] **3.3** Type `stats` -- Cache Performance section should show hit rate > 0% for system info
-
-### Query Cache
-
-- [ ] **3.4** Ask a general knowledge question like "What is Linux?" -- should get response
-- [ ] **3.5** Ask the exact same question -- should respond instantly from cache (no "Thinking..." spinner)
-- [ ] **3.6** Type `stats` -- should reflect the cached queries
+- [ ] **3.1** Ask "How much disk space do I have?" -- should get response (tool executes, cache miss)
+- [ ] **3.2** Immediately ask the same question -- tool result should be served from cache; Claude still generates fresh prose (one API call but no subprocess/psutil)
+- [ ] **3.3** Type `stats` -- Tool Result Cache section should show hit rate > 0% with hits/misses
 
 ### Cache Invalidation
 
-- [ ] **3.7** Wait 60+ seconds and re-ask disk space question -- should refresh (cache expired)
+- [ ] **3.4** Ask "List files in /tmp" -- Claude uses `list_directory`, result cached
+- [ ] **3.5** Ask "Create a file called /tmp/test_cache.txt" -- `write_file` should invalidate `list_directory` cache
+- [ ] **3.6** Ask "List files in /tmp" again -- should be a fresh tool execution (cache was invalidated)
+- [ ] **3.7** Run any shell command (e.g. "Run ls") -- `run_command` should invalidate all tool caches
+
+### TTL Expiration
+
+- [ ] **3.8** Wait 30+ seconds and re-ask disk space question -- should refresh (get_system_info TTL is 30s)
 
 ---
 
@@ -411,7 +412,7 @@ The Docker image includes it; for local testing, install it first.
 ## 13. Docker-Specific Tests
 
 - [ ] **13.1** Container starts without errors: `docker compose up -d && docker compose logs`
-- [ ] **13.2** Version check: `docker compose exec aios python3 -c "import aios; print(aios.__version__)"` -- should print "0.5.0"
+- [ ] **13.2** Version check: `docker compose exec aios python3 -c "import aios; print(aios.__version__)"` -- should print "0.6.0"
 - [ ] **13.3** All imports work:
   ```bash
   docker compose exec aios python3 -c "
@@ -443,7 +444,7 @@ docker compose exec aios bash -c "cd /app && pip install pytest pytest-cov pytes
 pytest tests/ -v
 ```
 
-- [ ] **14.1** All 385 tests pass
+- [ ] **14.1** All 398 tests pass
 - [ ] **14.2** No test failures or errors
 - [ ] **14.3** Skipped tests are only platform-specific (Windows vs Linux)
 
@@ -455,7 +456,7 @@ pytest tests/ -v
 |----------|-------|--------|--------|
 | Shell Commands | 16 | | |
 | Plugin System | 9 | | |
-| Caching System | 7 | | |
+| Caching System | 8 | | |
 | Rate Limiting | 3 | | |
 | Session Persistence | 10 | | |
 | Credential Management | 6 | | |
@@ -467,13 +468,13 @@ pytest tests/ -v
 | Claude Code Interactive | 31 | | |
 | Docker-Specific | 5 | | |
 | Automated Tests | 3 | | |
-| **Total** | **143** | | |
+| **Total** | **144** | | |
 
 ---
 
 **Tester**: _______________
 **Date**: _______________
-**Version**: 0.5.0
+**Version**: 0.6.0
 **Environment**: Docker / Local (circle one)
 **OS**: _______________
 **Python**: _______________

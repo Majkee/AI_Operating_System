@@ -84,8 +84,5 @@ auto_detect = true
 # Detection sensitivity: high, moderate, low
 auto_detect_sensitivity = "moderate"
 
-# Max agentic turns per code session
-max_turns = 50
-
 # Auth mode: "api_key" or "subscription" (comment out to prompt on first use)
 # auth_mode = "api_key"

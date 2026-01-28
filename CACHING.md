@@ -7,7 +7,7 @@ AIOS includes a flexible caching system to improve performance and reduce redund
 The caching system provides:
 - **LRU Cache**: General-purpose cache with size limits and TTL
 - **System Info Cache**: Specialized cache for system metrics
-- **Query Cache**: Intelligent caching of informational queries
+- **Tool Result Cache**: Transparent caching of tool execution results
 
 ## LRU Cache
 
@@ -178,71 +178,67 @@ stats = cache.stats
 # }
 ```
 
-## Query Cache
+## Tool Result Cache
 
-Intelligent caching for Claude API responses to informational queries.
+Caches the raw `ToolResult` from tool handlers so that expensive operations
+(subprocess calls, psutil, file I/O) are skipped on cache hits. Claude still
+generates a fresh prose response every time — only the tool execution is cached.
 
 ### How It Works
 
-The query cache automatically determines if a query should be cached:
+1. When `ToolHandler.execute()` is called, it checks the cache first.
+2. On a **hit**, the cached `ToolResult` is returned instantly — no handler runs.
+3. On a **miss**, the handler runs normally. If it succeeds, the result is stored.
+4. After every execution, **invalidation rules** are checked — a `write_file`
+   call can automatically evict stale `read_file` entries, for example.
 
-**Cached (informational):**
-- "What is the current date?"
-- "How do I list files in Linux?"
-- "Explain what grep does"
-- "Show me my disk usage"
+### Per-Tool Configuration
 
-**Not cached (actions):**
-- "Delete that file"
-- "Install vim"
-- "Create a new folder"
-- "Modify the config"
+| Tool | TTL | key_params | Notes |
+|------|-----|------------|-------|
+| `get_system_info` | 30 s | `["info_type"]` | Disk/memory/cpu/etc. |
+| `read_file` | 300 s | `["path"]` | Invalidated by `write_file` |
+| `list_directory` | 60 s | `["path", "show_hidden"]` | Invalidated by `write_file` |
+| `search_files` | 60 s | `["query", "location", "search_type"]` | Invalidated by `write_file` |
+
+The `explanation` parameter is always excluded from the cache key so that
+rephrased requests hit the same entry.
+
+### Invalidation Rules
+
+| Trigger Tool | Target Tool | Scope |
+|-------------|-------------|-------|
+| `write_file` | `read_file` | Specific key (same path) |
+| `write_file` | `list_directory` | Wipe all entries |
+| `write_file` | `search_files` | Wipe all entries |
+| `manage_application` | `get_system_info` | Wipe all entries |
+| `run_command` | All 4 cacheable tools | Wipe all (commands can do anything) |
 
 ### Usage
 
 ```python
-from aios.cache import get_query_cache
+from aios.cache import get_tool_result_cache, ToolCacheConfig
 
-cache = get_query_cache()
+cache = get_tool_result_cache()
 
-# Check if query is cacheable
-if cache.is_cacheable("what is Python?"):
-    # Check for cached response
-    cached_response = cache.get("what is Python?")
+# Configure a tool for caching
+cache.configure_tool("my_tool", ToolCacheConfig(
+    cacheable=True,
+    ttl=60.0,
+    key_params=["param1", "param2"],  # None = all params minus "explanation"
+))
 
-    if cached_response is None:
-        # Get response from Claude
-        response = call_claude("what is Python?")
-        # Cache it
-        cache.set("what is Python?", response)
+# Add invalidation rules
+cache.add_invalidation_rule("mutating_tool", "my_tool")  # wipe all on trigger
 ```
 
-### Cacheable Patterns
+### Stats Output (via `stats` command)
 
-Queries containing these phrases are cached:
-- "what is"
-- "how do i"
-- "explain"
-- "show me"
-- "list"
-- "where is"
-- "help me understand"
-
-Queries containing these words are NOT cached:
-- "delete", "remove"
-- "install", "create"
-- "write", "modify", "change"
-
-### Configuration
-
-```python
-from aios.cache import QueryCache
-
-# Custom configuration
-cache = QueryCache(
-    max_size=50,    # Maximum cached queries
-    ttl=600         # 10 minute TTL
-)
+```
+Tool Result Cache:
+  Hit rate: 67% (4 hits, 2 misses)
+  Entries: 3/200
+  Evictions: 0
 ```
 
 ## Global Cache Instances
@@ -250,11 +246,11 @@ cache = QueryCache(
 AIOS provides singleton instances for convenience:
 
 ```python
-from aios.cache import get_system_info_cache, get_query_cache
+from aios.cache import get_system_info_cache, get_tool_result_cache
 
 # These return the same instance across your application
 sys_cache = get_system_info_cache()
-query_cache = get_query_cache()
+tool_cache = get_tool_result_cache()
 ```
 
 ## Cache Entry Details
@@ -371,7 +367,7 @@ cache = LRUCache(max_size=1000)
 ## Integration Example
 
 ```python
-from aios.cache import LRUCache, cached, get_system_info_cache
+from aios.cache import LRUCache, cached, get_system_info_cache, get_tool_result_cache
 
 # Application-level cache
 app_cache = LRUCache(max_size=200, default_ttl=300)
@@ -390,4 +386,8 @@ def get_dashboard_data():
         "disk": sys_cache.get_or_compute("disk", fetch_disk_info),
         "memory": sys_cache.get_or_compute("memory", fetch_memory_info),
     }
+
+# Tool result cache is wired up automatically by AIOSShell.__init__
+# and attached to ToolHandler via set_cache().  Stats are visible via
+# the 'stats' command in the AIOS shell.
 ```

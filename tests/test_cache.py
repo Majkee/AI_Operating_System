@@ -10,10 +10,13 @@ from aios.cache import (
     LRUCache,
     cached,
     SystemInfoCache,
-    QueryCache,
+    ToolResultCache,
+    ToolCacheConfig,
     get_system_info_cache,
-    get_query_cache,
+    get_tool_result_cache,
+    _generate_key,
 )
+from aios.claude.tools import ToolResult
 
 
 class TestCacheEntry:
@@ -254,42 +257,137 @@ class TestSystemInfoCache:
         assert "memory" in stats
 
 
-class TestQueryCache:
-    """Test QueryCache class."""
+class TestToolResultCache:
+    """Test ToolResultCache class."""
 
-    def test_cacheable_queries(self):
-        """Test identifying cacheable queries."""
-        cache = QueryCache()
+    def _make_result(self, output="ok", success=True):
+        return ToolResult(success=success, output=output)
 
-        assert cache.is_cacheable("what is the current date") is True
-        assert cache.is_cacheable("how do i list files") is True
-        assert cache.is_cacheable("explain what grep does") is True
+    def test_unconfigured_tool_not_cached(self):
+        """Unconfigured tools are never cached."""
+        cache = ToolResultCache()
+        result = self._make_result()
 
-    def test_non_cacheable_queries(self):
-        """Test identifying non-cacheable queries."""
-        cache = QueryCache()
+        cache.set("unknown_tool", {"arg": "val"}, result)
+        assert cache.get("unknown_tool", {"arg": "val"}) is None
 
-        assert cache.is_cacheable("delete that file") is False
-        assert cache.is_cacheable("install vim") is False
-        assert cache.is_cacheable("hi") is False  # Too short
+    def test_cacheable_tool_stores_and_retrieves(self):
+        """A configured cacheable tool's result is stored and returned."""
+        cache = ToolResultCache()
+        cache.configure_tool("get_system_info", ToolCacheConfig(
+            cacheable=True, ttl=60.0, key_params=["info_type"],
+        ))
 
-    def test_cache_and_retrieve(self):
-        """Test caching and retrieving queries."""
-        cache = QueryCache()
+        result = self._make_result("disk data")
+        cache.set("get_system_info", {"info_type": "disk", "explanation": "x"}, result)
 
-        query = "what is the current date"
-        response = "Today is January 26, 2026"
+        cached = cache.get("get_system_info", {"info_type": "disk", "explanation": "y"})
+        assert cached is not None
+        assert cached.output == "disk data"
 
-        cache.set(query, response)
-        assert cache.get(query) == response
+    def test_failed_results_never_cached(self):
+        """Results with success=False are not stored."""
+        cache = ToolResultCache()
+        cache.configure_tool("read_file", ToolCacheConfig(cacheable=True, ttl=300.0))
 
-    def test_non_cacheable_not_stored(self):
-        """Test that non-cacheable queries are not stored."""
-        cache = QueryCache()
+        fail = self._make_result("err", success=False)
+        cache.set("read_file", {"path": "/tmp/x"}, fail)
+        assert cache.get("read_file", {"path": "/tmp/x"}) is None
 
-        query = "delete the file"
-        cache.set(query, "response")
-        assert cache.get(query) is None
+    def test_ttl_expiration(self):
+        """Entries expire after TTL."""
+        cache = ToolResultCache()
+        cache.configure_tool("fast", ToolCacheConfig(cacheable=True, ttl=0.1))
+
+        result = self._make_result()
+        cache.set("fast", {"a": 1}, result)
+        assert cache.get("fast", {"a": 1}) is not None
+
+        time.sleep(0.15)
+        assert cache.get("fast", {"a": 1}) is None
+
+    def test_explanation_excluded_from_key(self):
+        """The 'explanation' param should not affect the cache key."""
+        cache = ToolResultCache()
+        cache.configure_tool("list_directory", ToolCacheConfig(cacheable=True, ttl=60.0))
+
+        result = self._make_result("listing")
+        cache.set("list_directory", {"path": "/home", "explanation": "first"}, result)
+
+        cached = cache.get("list_directory", {"path": "/home", "explanation": "different"})
+        assert cached is not None
+        assert cached.output == "listing"
+
+    def test_specific_key_invalidation(self):
+        """write_file -> read_file invalidation for same path only."""
+        cache = ToolResultCache()
+        cache.configure_tool("read_file", ToolCacheConfig(
+            cacheable=True, ttl=300.0, key_params=["path"],
+        ))
+
+        # Cache two read_file entries
+        r1 = self._make_result("content a")
+        r2 = self._make_result("content b")
+        cache.set("read_file", {"path": "/a.txt"}, r1)
+        cache.set("read_file", {"path": "/b.txt"}, r2)
+
+        # Add specific-key invalidation rule
+        cache.add_invalidation_rule(
+            "write_file", "read_file",
+            key_transform=lambda inp: _generate_key(
+                "read_file", (), {"path": inp.get("path")},
+            ),
+        )
+
+        # Trigger invalidation for /a.txt only
+        cache.process_invalidations("write_file", {"path": "/a.txt", "content": "new"})
+
+        assert cache.get("read_file", {"path": "/a.txt"}) is None
+        assert cache.get("read_file", {"path": "/b.txt"}) is not None
+
+    def test_wipe_all_invalidation(self):
+        """write_file -> search_files wipes all search_files entries."""
+        cache = ToolResultCache()
+        cache.configure_tool("search_files", ToolCacheConfig(
+            cacheable=True, ttl=60.0, key_params=["query", "location", "search_type"],
+        ))
+
+        cache.set("search_files", {"query": "*.py", "location": "/", "search_type": "filename"},
+                   self._make_result("found"))
+        cache.set("search_files", {"query": "*.txt", "location": "/", "search_type": "filename"},
+                   self._make_result("found2"))
+
+        cache.add_invalidation_rule("write_file", "search_files")
+        cache.process_invalidations("write_file", {"path": "/x.py", "content": ""})
+
+        assert cache.get("search_files", {"query": "*.py", "location": "/", "search_type": "filename"}) is None
+        assert cache.get("search_files", {"query": "*.txt", "location": "/", "search_type": "filename"}) is None
+
+    def test_stats_tracking(self):
+        """Stats track hits and misses."""
+        cache = ToolResultCache()
+        cache.configure_tool("t", ToolCacheConfig(cacheable=True, ttl=60.0))
+
+        cache.set("t", {"k": 1}, self._make_result())
+        cache.get("t", {"k": 1})  # hit
+        cache.get("t", {"k": 2})  # miss
+
+        stats = cache.stats
+        assert stats["hits"] >= 1
+        assert stats["misses"] >= 1
+
+    def test_clear_removes_all(self):
+        """clear() empties the cache completely."""
+        cache = ToolResultCache()
+        cache.configure_tool("t", ToolCacheConfig(cacheable=True, ttl=60.0))
+
+        cache.set("t", {"k": 1}, self._make_result())
+        cache.set("t", {"k": 2}, self._make_result())
+        cache.clear()
+
+        assert cache.get("t", {"k": 1}) is None
+        assert cache.get("t", {"k": 2}) is None
+        assert cache.stats["size"] == 0
 
 
 class TestGlobalCaches:
@@ -301,8 +399,8 @@ class TestGlobalCaches:
         cache2 = get_system_info_cache()
         assert cache1 is cache2
 
-    def test_get_query_cache(self):
-        """Test getting global query cache."""
-        cache1 = get_query_cache()
-        cache2 = get_query_cache()
+    def test_get_tool_result_cache(self):
+        """Test getting global tool result cache."""
+        cache1 = get_tool_result_cache()
+        cache2 = get_tool_result_cache()
         assert cache1 is cache2

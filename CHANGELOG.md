@@ -5,6 +5,44 @@ All notable changes to AIOS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-01-28
+
+### Added
+
+#### Tool Result Cache
+- `ToolCacheConfig` dataclass for per-tool cache configuration (cacheable flag, TTL, key_params)
+- `ToolResultCache` class that caches raw `ToolResult` objects at the tool execution layer — expensive operations (subprocess calls, psutil, file I/O) are skipped on cache hits while Claude still generates fresh prose responses
+- `get_tool_result_cache()` global singleton accessor
+- `ToolHandler.set_cache()` method to attach a `ToolResultCache` to the tool handler
+- Cache check before handler invocation and cache store + invalidation after, integrated into `ToolHandler.execute()`
+- Per-tool configurations: `get_system_info` (30s), `read_file` (300s), `list_directory` (60s), `search_files` (60s)
+- Invalidation rules: `write_file` invalidates `read_file` (specific path), `list_directory` (all), `search_files` (all); `manage_application` invalidates `get_system_info`; `run_command` wipes all cacheable tools
+- `explanation` parameter excluded from cache keys so rephrased requests hit the same entry
+- Tool Result Cache stats in the `stats` command output (hit rate, entries, evictions)
+
+#### Tests
+- 9 tests in `TestToolResultCache`: unconfigured tool, store/retrieve, failure exclusion, TTL expiry, explanation exclusion, specific-key invalidation, wipe-all invalidation, stats tracking, clear
+- `TestGlobalCaches.test_get_tool_result_cache` singleton test
+
+### Changed
+- `aios/cache.py` — replaced `QueryCache` with `ToolResultCache` and `ToolCacheConfig`; updated module docstring and imports
+- `aios/claude/tools.py` — `ToolHandler` gains `_cache` field and `set_cache()` method; `execute()` adds cache lookup/store/invalidation around handler calls
+- `aios/shell.py` — imports `get_tool_result_cache`, `ToolResultCache`, `ToolCacheConfig`, `_generate_key` instead of `get_query_cache`, `QueryCache`; `__init__` creates `self.tool_cache` and calls `_configure_tool_cache()` + `tool_handler.set_cache()`; new `_configure_tool_cache()` method with per-tool configs and invalidation rules; `_handle_system_info` simplified (no more `system_cache.get_or_compute` wrappers — caching is transparent via `ToolHandler.execute()`); `_handle_user_input` no longer checks/stores query cache; `_show_stats` displays tool result cache stats instead of query cache stats
+- `tests/test_cache.py` — `TestQueryCache` replaced by `TestToolResultCache`; `TestGlobalCaches` updated
+- `tests/test_tasks.py` — mock reference updated from `get_query_cache` to `get_tool_result_cache`
+- `CACHING.md` — "Query Cache" section replaced with "Tool Result Cache" documentation
+- `ARCHITECTURE.md` — caching table, ToolHandler API, data flow diagram, and performance section updated
+- `README.md` — cache.py description, caching feature section, and CACHING.md link text updated
+- `MANUAL_TESTS.md` — version bumped; Query Cache manual tests replaced with Tool Result Cache tests
+
+### Removed
+- `QueryCache` class — fragile pattern-based matching of user queries to cache Claude's prose responses
+- `_query_cache` global and `get_query_cache()` accessor
+- Query cache lookup/store in `_handle_user_input` and `response_parts` accumulator
+- `TestQueryCache` test class (5 tests) and `test_get_query_cache` test
+
+---
+
 ## [0.5.0] - 2026-01-27
 
 ### Added

@@ -8,6 +8,8 @@ and metadata to help users choose the right model for their needs.
 from dataclasses import dataclass
 from typing import Optional
 
+__all__ = ["ModelInfo", "AVAILABLE_MODELS", "get_model_by_id", "list_models", "get_default_model"]
+
 
 @dataclass
 class ModelInfo:

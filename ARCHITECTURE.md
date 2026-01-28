@@ -97,7 +97,8 @@ Each tool has:
 Key class: `ToolHandler`
 - `register()`: Register a handler for a built-in tool
 - `register_tool()`: Register a complete tool with definition and handler (used by plugins)
-- `execute()`: Dispatch tool calls to handlers
+- `set_cache()`: Attach a `ToolResultCache` for transparent result caching
+- `execute()`: Dispatch tool calls to handlers (with cache check/store/invalidation)
 - `get_all_tools()`: Get all tool definitions (built-in + plugin)
 - `get_plugin_tools()`: Get only plugin-registered tools
 
@@ -238,13 +239,13 @@ Multi-level caching for performance:
 | Cache | Purpose | Default TTL |
 |-------|---------|-------------|
 | `LRUCache` | General-purpose cache | 300s |
-| `SystemInfoCache` | System metrics | 15-120s by type |
-| `QueryCache` | Informational Claude responses | 600s |
+| `SystemInfoCache` | System metrics (for Claude's prompt context) | 2-30s by type |
+| `ToolResultCache` | Tool execution results | 30-300s per tool |
 
 Features:
 - Thread-safe LRU eviction
-- Type-specific TTLs for system info (CPU: 15s, memory: 30s, disk: 60s)
-- Intelligent query cacheability detection
+- Per-tool TTLs and key-param configuration
+- Automatic invalidation rules (e.g. `write_file` invalidates `read_file`)
 - `@cached` decorator for function-level caching
 - Cache statistics tracking (hits, misses, hit rate)
 
@@ -354,7 +355,6 @@ Key class: `ConfirmationPrompt`
 1. User Input
    └─> shell.py: _handle_user_input()
        ├─> Check rate limit (_check_rate_limit())
-       ├─> Check query cache (query_cache.get())
        └─> claude/client.py: send_message()
            └─> Anthropic API
                └─> Response with tool_use
@@ -362,18 +362,19 @@ Key class: `ConfirmationPrompt`
 2. Tool Execution
    └─> shell.py: _process_tool_calls()
        └─> tool_handler.execute()
+           ├─> Check tool result cache (cache hit → return immediately)
            └─> safety/guardrails.py: check_command()
                └─> [FORBIDDEN] Block and explain
                └─> [DANGEROUS] Request confirmation
                └─> [SAFE/MODERATE] Proceed
            └─> executor/sandbox.py: execute()
                └─> Command output
+           └─> Cache result + run invalidation rules
 
 3. Result Return
    └─> claude/client.py: send_tool_results()
        └─> Claude processes result
-           └─> Final response to user
-               └─> Cache response if informational
+           └─> Final response to user (always freshly generated)
 ```
 
 ### Session Flow
@@ -506,8 +507,8 @@ aios "show disk usage"
 ## Performance Considerations
 
 ### Current Optimizations
-- **LRU caching** for system info with type-specific TTLs
-- **Query caching** for informational Claude responses
+- **Tool result caching** for expensive tool executions (system info, file reads, directory listings, searches) with per-tool TTLs and automatic invalidation
+- **LRU caching** for system context with type-specific TTLs
 - **Rate limiting** prevents API overuse
 - **Lazy loading** of system context
 - **Output size limits** prevent memory bloat

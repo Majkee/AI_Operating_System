@@ -11,13 +11,13 @@ Loads configuration from multiple sources in order of priority:
 import os
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 if sys.version_info >= (3, 11):
     import tomllib
 else:
     import tomli as tomllib
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class APIConfig(BaseModel):
@@ -84,22 +84,19 @@ class ExecutorConfig(BaseModel):
 
 class CodeConfig(BaseModel):
     """Claude Code integration configuration."""
+    model_config = ConfigDict(extra="ignore")
+
     enabled: bool = Field(default=True, description="Enable Claude Code integration")
     auto_detect: bool = Field(default=True, description="Auto-detect coding requests")
     auto_detect_sensitivity: str = Field(
         default="moderate",
         description="Detection sensitivity: high, moderate, low"
     )
-    allowed_tools: Optional[list[str]] = Field(
-        default=None,
-        description="Restrict Claude Code tools (None = all)"
-    )
-    max_turns: int = Field(default=50, description="Max agentic turns per code session")
     default_working_directory: Optional[str] = Field(
         default=None,
         description="Default CWD for code tasks"
     )
-    auth_mode: Optional[str] = Field(
+    auth_mode: Optional[Literal["api_key", "subscription"]] = Field(
         default=None,
         description="Auth mode: 'api_key' or 'subscription' (None = prompt on first use)"
     )

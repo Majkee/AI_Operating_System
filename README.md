@@ -4,7 +4,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/aiosys.svg)](https://pypi.org/project/aiosys/)
 [![Docker Hub](https://img.shields.io/docker/v/majkee/aios?label=docker%20hub)](https://hub.docker.com/r/majkee/aios)
-[![Tests](https://img.shields.io/badge/tests-385%20passed-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-398%20passed-brightgreen.svg)](#testing)
 [![Code style: PEP8](https://img.shields.io/badge/code%20style-pep8-green.svg)](https://www.python.org/dev/peps/pep-0008/)
 
 **Talk to your Linux system in plain English.** AIOS is a natural language interface powered by Claude that makes Linux accessible to everyone -- no command line experience required.
@@ -131,8 +131,9 @@ Extend AIOS with custom tools and workflows:
 
 Intelligent caching reduces redundant operations:
 
-- System info cached with type-specific TTLs
-- Informational query responses cached
+- Tool results cached at the execution layer with per-tool TTLs
+- Automatic invalidation rules (e.g. `write_file` invalidates `read_file`)
+- System info cached for Claude's prompt context
 - LRU eviction with configurable limits
 
 ### Rate Limiting
@@ -268,7 +269,7 @@ aios/
 ├── tasks/         # Background task management (models, manager, browser)
 ├── ui/            # Interface (terminal rendering, user prompts, completions)
 ├── data/          # Bundled default configuration
-├── cache.py       # LRU cache, system info cache, query cache
+├── cache.py       # LRU cache, system info cache, tool result cache
 ├── ratelimit.py   # Token bucket + sliding window rate limiting
 ├── plugins.py     # Plugin system (loading, tools, recipes)
 ├── credentials.py # Encrypted credential storage
@@ -285,7 +286,7 @@ aios/
 |----------|-------------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Internal architecture and component design |
 | [PLUGINS.md](PLUGINS.md) | Plugin system: creating tools, recipes, lifecycle hooks |
-| [CACHING.md](CACHING.md) | Caching system: LRU cache, system cache, query cache |
+| [CACHING.md](CACHING.md) | Caching system: LRU cache, system cache, tool result cache |
 | [RATELIMIT.md](RATELIMIT.md) | Rate limiting: token bucket, sliding window, configuration |
 | [SESSIONS.md](SESSIONS.md) | Session management: persistence, resume, history |
 | [CREDENTIALS.md](CREDENTIALS.md) | Credential management: encryption, storage, plugin usage |
@@ -351,13 +352,12 @@ max_timeout = 3600              # Maximum allowed timeout (1 hour)
 enabled = true                  # Enable Claude Code integration
 auto_detect = true              # Auto-detect coding requests
 auto_detect_sensitivity = "moderate"  # high, moderate, low
-max_turns = 50                  # Max agentic turns per code session
 # auth_mode = "api_key"         # or "subscription" (prompt on first use if unset)
 ```
 
 ## Testing
 
-AIOS has a comprehensive test suite with 385 tests covering all major systems.
+AIOS has a comprehensive test suite with 398 tests covering all major systems.
 
 ```bash
 # Install test dependencies
@@ -380,7 +380,7 @@ pytest tests/test_ratelimit.py -v
 | Module | Tests |
 |--------|-------|
 | Ansible Plugin | 42 |
-| Caching | 30 |
+| Caching | 35 |
 | Claude Code Integration | 42 |
 | Configuration | 15 |
 | Error Handling | 43 |

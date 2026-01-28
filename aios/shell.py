@@ -55,9 +55,11 @@ from .plugins import (
 )
 from .cache import (
     get_system_info_cache,
-    get_query_cache,
+    get_tool_result_cache,
     SystemInfoCache,
-    QueryCache,
+    ToolResultCache,
+    ToolCacheConfig,
+    _generate_key,
 )
 from .ratelimit import (
     get_rate_limiter,
@@ -71,6 +73,62 @@ from .credentials import (
     get_credential,
     list_credentials,
 )
+
+
+def _update_toml_value(config_path: Path, section: str, key: str, value: str) -> None:
+    """Update a single key in a TOML config file, preserving comments and formatting.
+
+    *value* must already be a TOML-formatted literal (e.g. ``'"api_key"'`` for
+    a string, ``'true'`` for a boolean).
+    """
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if not config_path.exists():
+        config_path.write_text(f"[{section}]\n{key} = {value}\n")
+        return
+
+    lines = config_path.read_text().splitlines(keepends=True)
+    section_header = f"[{section}]"
+    in_section = False
+    key_found = False
+    insert_idx: Optional[int] = None
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        # Detect section headers
+        if stripped.startswith("[") and not stripped.startswith("[["):
+            if in_section and not key_found:
+                # We left the target section without finding the key — insert before this line
+                insert_idx = i
+                break
+            in_section = stripped == section_header
+            continue
+        if in_section:
+            # Match key = ... (allowing whitespace)
+            if stripped.startswith(f"{key} ") or stripped.startswith(f"{key}="):
+                lines[i] = f"{key} = {value}\n"
+                key_found = True
+                break
+
+    if not key_found:
+        new_line = f"{key} = {value}\n"
+        if insert_idx is not None:
+            # Insert at end of the target section (before the next section header)
+            lines.insert(insert_idx, new_line)
+        elif in_section:
+            # Section was the last in the file — append
+            # Ensure trailing newline before appending
+            if lines and not lines[-1].endswith("\n"):
+                lines[-1] += "\n"
+            lines.append(new_line)
+        else:
+            # Section doesn't exist — append it
+            if lines and not lines[-1].endswith("\n"):
+                lines[-1] += "\n"
+            lines.append(f"\n{section_header}\n")
+            lines.append(new_line)
+
+    config_path.write_text("".join(lines))
 
 
 class AIOSShell:
@@ -114,7 +172,9 @@ class AIOSShell:
 
         # Initialize caching
         self.system_cache = get_system_info_cache()
-        self.query_cache = get_query_cache()
+        self.tool_cache = get_tool_result_cache()
+        self._configure_tool_cache()
+        self.tool_handler.set_cache(self.tool_cache)
 
         # Initialize rate limiting
         self.rate_limiter = get_rate_limiter()
@@ -268,6 +328,44 @@ class AIOSShell:
         )
         configure_rate_limiter(config)
 
+    def _configure_tool_cache(self) -> None:
+        """Configure per-tool caching and invalidation rules."""
+        tc = self.tool_cache
+
+        # --- cacheable tools ---
+        tc.configure_tool("get_system_info", ToolCacheConfig(
+            cacheable=True, ttl=30.0, key_params=["info_type"],
+        ))
+        tc.configure_tool("read_file", ToolCacheConfig(
+            cacheable=True, ttl=300.0, key_params=["path"],
+        ))
+        tc.configure_tool("list_directory", ToolCacheConfig(
+            cacheable=True, ttl=60.0, key_params=["path", "show_hidden"],
+        ))
+        tc.configure_tool("search_files", ToolCacheConfig(
+            cacheable=True, ttl=60.0,
+            key_params=["query", "location", "search_type"],
+        ))
+
+        # --- invalidation rules ---
+        # write_file -> read_file (specific key for the same path)
+        tc.add_invalidation_rule(
+            "write_file", "read_file",
+            key_transform=lambda inp: _generate_key(
+                "read_file", (), {"path": inp.get("path")},
+            ),
+        )
+        # write_file -> wipe list_directory & search_files
+        tc.add_invalidation_rule("write_file", "list_directory")
+        tc.add_invalidation_rule("write_file", "search_files")
+
+        # manage_application -> wipe get_system_info
+        tc.add_invalidation_rule("manage_application", "get_system_info")
+
+        # run_command can do anything -> wipe all cacheable tools
+        for tool in ("get_system_info", "read_file", "list_directory", "search_files"):
+            tc.add_invalidation_rule("run_command", tool)
+
     def _get_session_ids(self) -> list:
         """Return recent session IDs for tab completion."""
         try:
@@ -401,11 +499,31 @@ class AIOSShell:
 
         # Cache stats
         self.ui.console.print("\n[bold]Cache Performance:[/bold]")
+        has_cache_stats = False
+
+        # Tool result cache stats
+        tc_stats = self.tool_cache.stats
+        tc_hits = tc_stats.get('hits', 0)
+        tc_misses = tc_stats.get('misses', 0)
+        if tc_hits > 0 or tc_misses > 0:
+            has_cache_stats = True
+            tc_total = tc_hits + tc_misses
+            tc_rate = tc_hits / tc_total * 100 if tc_total > 0 else 0
+            self.ui.console.print(f"  Tool Result Cache:")
+            self.ui.console.print(f"    Hit rate: {tc_rate:.0f}% ({tc_hits} hits, {tc_misses} misses)")
+            self.ui.console.print(f"    Entries: {tc_stats.get('size', 0)}/{tc_stats.get('max_size', 200)}")
+            self.ui.console.print(f"    Evictions: {tc_stats.get('evictions', 0)}")
+
+        # System context cache stats
         sys_cache_stats = self.system_cache.stats
         for info_type, stats in sys_cache_stats.items():
             if stats.get('hits', 0) > 0 or stats.get('misses', 0) > 0:
+                has_cache_stats = True
                 hit_rate = stats['hits'] / (stats['hits'] + stats['misses']) * 100 if (stats['hits'] + stats['misses']) > 0 else 0
-                self.ui.console.print(f"  {info_type}: {hit_rate:.0f}% hit rate ({stats['hits']} hits, {stats['misses']} misses)")
+                self.ui.console.print(f"  system/{info_type}: {hit_rate:.0f}% hit rate ({stats['hits']} hits, {stats['misses']} misses)")
+
+        if not has_cache_stats:
+            self.ui.console.print("  [dim]No cache activity yet[/dim]")
 
         # Plugin stats
         plugins = self.plugin_manager.list_plugins()
@@ -459,11 +577,6 @@ class AIOSShell:
         """Change the current model."""
         from .models import AVAILABLE_MODELS, get_model_by_id
         from .config import reset_config
-        if sys.version_info >= (3, 11):
-            import tomllib
-        else:
-            import tomli as tomllib
-        import tomli_w
 
         if not model_arg:
             self._show_models()
@@ -491,27 +604,10 @@ class AIOSShell:
             self.ui.print_info("Use 'model' to see available models")
             return
 
-        # Update config file
+        # Update config file (preserves comments and formatting)
         config_file = Path.home() / ".config" / "aios" / "config.toml"
-        config_content = {}
-
-        if config_file.exists():
-            try:
-                with open(config_file, "rb") as f:
-                    config_content = tomllib.load(f)
-            except Exception as e:
-                self.ui.print_error(f"Failed to read config file: {e}")
-                return
-
-        # Update model in config
-        if "api" not in config_content:
-            config_content["api"] = {}
-        config_content["api"]["model"] = selected_model.id
-
-        # Save config
         try:
-            with open(config_file, "wb") as f:
-                tomli_w.dump(config_content, f)
+            _update_toml_value(config_file, "api", "model", f'"{selected_model.id}"')
         except Exception as e:
             self.ui.print_error(f"Failed to save config: {e}")
             return
@@ -873,7 +969,8 @@ class AIOSShell:
                         error_message="Cancelled by user",
                     )
             else:
-                # Process already finished during the interrupt
+                # Process already finished during the interrupt —
+                # fall through to normal completion / process.wait() below.
                 pass
 
         # Check if the reader timed out
@@ -1045,50 +1142,28 @@ class AIOSShell:
         )
 
     def _handle_system_info(self, params: Dict[str, Any]) -> ToolResult:
-        """Handle the get_system_info tool with caching."""
+        """Handle the get_system_info tool.
+
+        Caching is handled transparently by ToolHandler.execute().
+        """
         info_type = params.get("info_type", "general")
         explanation = params.get("explanation", "Getting system information")
 
         self.ui.print_executing(explanation)
 
-        def fetch_system_info():
-            """Fetch fresh system information."""
-            return self.system.get_context(force_refresh=True)
+        context = self.system.get_context(force_refresh=True)
 
-        def fetch_processes():
-            """Fetch process information."""
-            return self.system.get_running_processes(10)
-
-        # Use cached data when available
         if info_type == "disk":
-            output = self.system_cache.get_or_compute(
-                "disk",
-                lambda: self._format_disk_info(fetch_system_info())
-            )
-
+            output = self._format_disk_info(context)
         elif info_type == "memory":
-            output = self.system_cache.get_or_compute(
-                "memory",
-                lambda: self._format_memory_info(fetch_system_info())
-            )
-
+            output = self._format_memory_info(context)
         elif info_type == "cpu":
-            output = self.system_cache.get_or_compute(
-                "cpu",
-                lambda: self._format_cpu_info(fetch_system_info())
-            )
-
+            output = self._format_cpu_info(context)
         elif info_type == "processes":
-            output = self.system_cache.get_or_compute(
-                "processes",
-                lambda: self._format_processes_info(fetch_processes())
-            )
-
+            processes = self.system.get_running_processes(10)
+            output = self._format_processes_info(processes)
         else:  # general
-            output = self.system_cache.get_or_compute(
-                "general",
-                lambda: fetch_system_info().to_summary()
-            )
+            output = context.to_summary()
 
         self.audit.log(
             ActionType.SYSTEM_INFO,
@@ -1238,7 +1313,8 @@ class AIOSShell:
         self.ui.print_executing(explanation)
 
         # Use xdg-open on Linux
-        command = f"xdg-open {target}"
+        import shlex
+        command = f"xdg-open {shlex.quote(target)}"
         cmd_result = self.executor.execute(command, timeout=5)
 
         return ToolResult(
@@ -1258,6 +1334,7 @@ class AIOSShell:
         if not self._code_available:
             self.ui.print_error("Claude Code is not available.")
             self.ui.print_info(self.code_runner.get_install_instructions())
+            self.ui.print_info("[dim]If you install it during this session, restart AIOS to detect it.[/dim]")
             return
 
         # Ensure auth mode is chosen
@@ -1290,12 +1367,15 @@ class AIOSShell:
         else:
             self.ui.print_error(result.error or "Claude Code session failed.")
 
+        if result.session_id:
+            self.ui.print_info(f"[dim]Session ID: {result.session_id}[/dim]")
+
         # Audit
         self.audit.log(
             ActionType.COMMAND,
             f"Code session: {(prompt or 'interactive')[:80]}",
             success=result.success,
-            details={"session_id": session_id},
+            details={"session_id": result.session_id or session_id},
         )
 
     def _ensure_code_auth_mode(self) -> None:
@@ -1312,8 +1392,7 @@ class AIOSShell:
         self.ui.console.print()
 
         try:
-            from prompt_toolkit import prompt as pt_prompt
-            choice = pt_prompt("Choose auth mode (1 or 2) [1]: ").strip()
+            choice = input("Choose auth mode (1 or 2) [1]: ").strip()
         except (KeyboardInterrupt, EOFError):
             choice = "1"
 
@@ -1330,28 +1409,9 @@ class AIOSShell:
 
     def _save_code_auth_mode(self, auth_mode: str) -> None:
         """Persist auth_mode to the user config file."""
-        if sys.version_info >= (3, 11):
-            import tomllib
-        else:
-            import tomli as tomllib
-        import tomli_w
-
         config_file = Path.home() / ".config" / "aios" / "config.toml"
-        config_content: Dict[str, Any] = {}
-
-        if config_file.exists():
-            try:
-                with open(config_file, "rb") as f:
-                    config_content = tomllib.load(f)
-            except Exception:
-                pass
-
-        config_content.setdefault("code", {})["auth_mode"] = auth_mode
-
         try:
-            config_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(config_file, "wb") as f:
-                tomli_w.dump(config_content, f)
+            _update_toml_value(config_file, "code", "auth_mode", f'"{auth_mode}"')
         except Exception as e:
             self.ui.print_warning(f"Could not save auth mode to config: {e}")
 
@@ -1401,7 +1461,7 @@ class AIOSShell:
                 formatted_date = "?"
 
             table.add_row(
-                sess.session_id[:12],
+                sess.session_id,
                 formatted_date,
                 sess.prompt_summary[:40],
                 sess.working_directory,
@@ -1549,14 +1609,6 @@ class AIOSShell:
         if not self._check_rate_limit():
             return True
 
-        # Check query cache for informational queries
-        cached_response = None
-        if self.query_cache.is_cacheable(user_input):
-            cached_response = self.query_cache.get(user_input)
-            if cached_response:
-                self.ui.print_response(cached_response)
-                return True
-
         # Log user query
         self.audit.log_user_query(user_input)
         self.session.add_message("user", user_input)
@@ -1599,10 +1651,6 @@ class AIOSShell:
         if response.text:
             self.ui.print_response(response.text)
             self.session.add_message("assistant", response.text)
-
-            # Cache informational responses (no tool calls = pure info)
-            if not response.tool_calls and self.query_cache.is_cacheable(user_input):
-                self.query_cache.set(user_input, response.text)
 
         # Handle tool calls
         while response.tool_calls:

@@ -98,12 +98,17 @@ class TestLaunchResult:
         assert result.success is True
         assert result.return_code == 0
         assert result.error is None
+        assert result.session_id is None
 
     def test_launch_result_error(self):
         result = LaunchResult(success=False, return_code=1, error="something broke")
         assert not result.success
         assert result.return_code == 1
         assert result.error == "something broke"
+
+    def test_launch_result_session_id(self):
+        result = LaunchResult(success=True, session_id="abc-123")
+        assert result.session_id == "abc-123"
 
 
 # ---------------------------------------------------------------------------
@@ -171,13 +176,13 @@ class TestCodeRunner:
     @patch("subprocess.run")
     @patch("shutil.which", return_value="/usr/bin/claude")
     def test_launch_builds_correct_command(self, _which, mock_run):
-        """Verify command is ['claude', 'prompt'] for a simple prompt."""
+        """Verify command uses '--' separator before prompt to prevent flag injection."""
         mock_run.return_value = MagicMock(returncode=0)
         runner = CodeRunner()
         runner.launch_interactive(prompt="build a REST API")
         mock_run.assert_called_once()
         cmd = mock_run.call_args[0][0]
-        assert cmd == ["claude", "build a REST API"]
+        assert cmd == ["claude", "--", "build a REST API"]
 
     @patch("subprocess.run")
     @patch("shutil.which", return_value="/usr/bin/claude")
@@ -202,12 +207,12 @@ class TestCodeRunner:
     @patch("subprocess.run")
     @patch("shutil.which", return_value="/usr/bin/claude")
     def test_launch_with_resume_and_prompt(self, _which, mock_run):
-        """Verify resume + prompt produces ['claude', '--resume', 'id', 'prompt']."""
+        """Verify resume + prompt produces ['claude', '--resume', 'id', '--', 'prompt']."""
         mock_run.return_value = MagicMock(returncode=0)
         runner = CodeRunner()
         runner.launch_interactive(prompt="add tests", session_id="sess-abc")
         cmd = mock_run.call_args[0][0]
-        assert cmd == ["claude", "--resume", "sess-abc", "add tests"]
+        assert cmd == ["claude", "--resume", "sess-abc", "--", "add tests"]
 
     @patch("subprocess.run")
     @patch("shutil.which", return_value="/usr/bin/claude")
@@ -217,6 +222,7 @@ class TestCodeRunner:
         result = runner.launch_interactive()
         assert result.success
         assert result.return_code == 0
+        assert result.session_id is not None  # UUID always generated
 
     @patch("subprocess.run")
     @patch("shutil.which", return_value="/usr/bin/claude")
@@ -284,9 +290,7 @@ class TestCodeConfig:
         cfg = CodeConfig()
         assert cfg.enabled is True
         assert cfg.auto_detect is True
-        assert cfg.max_turns == 50
         assert cfg.auto_detect_sensitivity == "moderate"
-        assert cfg.allowed_tools is None
         assert cfg.default_working_directory is None
 
     def test_code_config_auth_mode_default(self):
@@ -336,3 +340,86 @@ class TestSystemPromptIntegration:
 
         assert "Claude Code" in SYSTEM_PROMPT
         assert "code" in SYSTEM_PROMPT.lower()
+
+
+# ---------------------------------------------------------------------------
+# Audit fix regression tests
+# ---------------------------------------------------------------------------
+
+class TestAuditFixes:
+    """Regression tests for v0.5.0 audit fixes."""
+
+    def test_flag_injection_blocked(self):
+        """Fix #1: '--dangerously-skip-permissions' must not become a CLI flag."""
+        with patch("subprocess.run") as mock_run, \
+             patch("shutil.which", return_value="/usr/bin/claude"):
+            mock_run.return_value = MagicMock(returncode=0)
+            runner = CodeRunner()
+            runner.launch_interactive(prompt="--dangerously-skip-permissions")
+            cmd = mock_run.call_args[0][0]
+            assert cmd == ["claude", "--", "--dangerously-skip-permissions"]
+
+    @patch("subprocess.run")
+    @patch("shutil.which", return_value="/usr/bin/claude")
+    def test_new_session_gets_uuid(self, _which, mock_run):
+        """Fix #2: Bare launches must generate and return a session ID."""
+        mock_run.return_value = MagicMock(returncode=0)
+        runner = CodeRunner()
+        result = runner.launch_interactive()
+        assert result.session_id is not None
+        # Should look like a UUID (36 chars with hyphens)
+        assert len(result.session_id) == 36
+
+    @patch("subprocess.run")
+    @patch("shutil.which", return_value="/usr/bin/claude")
+    def test_new_session_persisted(self, _which, mock_run):
+        """Fix #2: New sessions must be saved to disk."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = CodeRunner()
+            runner._sessions_dir = Path(tmp)
+            result = runner.launch_interactive(prompt="hello")
+            # Session file should exist
+            session_file = Path(tmp) / f"{result.session_id}.json"
+            assert session_file.exists()
+
+    def test_from_dict_type_coercion(self):
+        """Fix #18: from_dict must coerce types safely."""
+        data = {
+            "session_id": 12345,       # int instead of str
+            "created_at": "99.5",      # str instead of float
+            "working_directory": None,  # None instead of str
+        }
+        sess = CodeSession.from_dict(data)
+        assert sess.session_id == "12345"
+        assert sess.created_at == 99.5
+        assert sess.working_directory == "None"
+
+    def test_corrupt_session_file_skipped(self):
+        """Fix #6: A corrupt session file must not break get_sessions."""
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = CodeRunner()
+            runner._sessions_dir = Path(tmp)
+
+            # Write a valid session
+            valid = CodeSession(session_id="good", prompt_summary="ok")
+            runner._save_session(valid)
+
+            # Write a corrupt file
+            corrupt_path = Path(tmp) / "bad.json"
+            corrupt_path.write_text("{invalid json")
+
+            sessions = runner.get_sessions()
+            assert len(sessions) == 1
+            assert sessions[0].session_id == "good"
+
+    def test_auth_mode_literal_validation(self):
+        """Fix #5: Invalid auth_mode values must be rejected."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            CodeConfig(auth_mode="invalid_mode")
+
+    def test_code_config_ignores_extra_fields(self):
+        """Fix #8: Old configs with max_turns/allowed_tools must still load."""
+        cfg = CodeConfig(max_turns=50, allowed_tools=["Bash"])
+        assert cfg.enabled is True  # Should load fine, extras ignored
