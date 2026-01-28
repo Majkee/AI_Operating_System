@@ -398,14 +398,14 @@ class TestIntegration:
             return shell
 
     def test_background_starts_task(self, mock_config):
-        """_handle_run_command with background=True creates a task."""
+        """cmd_handler.handle_run_command with background=True creates a task."""
         shell = self._make_shell(mock_config)
         params = {
             "command": "echo hello",
             "explanation": "Echoing",
             "background": True,
         }
-        result = shell._handle_run_command(params)
+        result = shell.cmd_handler.handle_run_command(params)
         assert result.success is True
         assert "background" in result.output.lower() or "Background" in result.output
         tasks = shell.task_manager.list_tasks()

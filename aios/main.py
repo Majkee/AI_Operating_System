@@ -4,12 +4,16 @@ AIOS main entry point.
 This module provides the CLI interface for launching AIOS.
 """
 
+import json
+import logging
 import sys
 import os
 import argparse
 import webbrowser
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 def main():
@@ -111,8 +115,8 @@ def _check_api_key() -> tuple[Optional[str], str]:
                             key_value = parts[1].strip().strip('"').strip("'")
                             if key_value and key_value != "your-api-key-here":
                                 return key_value, ".env file"
-        except Exception:
-            pass
+        except (OSError, IOError, UnicodeDecodeError) as e:
+            logger.debug(f"Could not read .env file: {e}")
 
     # Check user config file
     config_file = Path.home() / ".config" / "aios" / "config.toml"
@@ -128,8 +132,8 @@ def _check_api_key() -> tuple[Optional[str], str]:
                 api_key = config_data.get("api", {}).get("api_key")
                 if api_key:
                     return api_key, "config file"
-        except Exception:
-            pass
+        except (OSError, IOError, KeyError, ValueError) as e:
+            logger.debug(f"Could not read config file: {e}")
     
     return None, ""
 
@@ -254,8 +258,8 @@ def run_setup():
 
             with open(config_file, "rb") as f:
                 config_content = tomllib.load(f)
-        except Exception:
-            pass
+        except (OSError, IOError, ValueError) as e:
+            logger.debug(f"Could not read existing config: {e}")
 
     # Update config
     if "api" not in config_content:

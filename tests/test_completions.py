@@ -79,9 +79,16 @@ class TestAIOSCompleter:
     def completer(self):
         return AIOSCompleter()
 
-    def test_empty_input_no_completions(self, completer):
+    def test_empty_input_shows_all_commands(self, completer):
+        """Double-tap Tab on empty input shows all commands with descriptions."""
         completions = _get_completions(completer, "")
-        assert completions == []
+        texts = _completion_texts(completions)
+        # Should return all primary command names
+        expected_commands = {entry["name"] for entry in COMMAND_REGISTRY}
+        assert set(texts) == expected_commands
+        # All completions should have help text as display_meta
+        for c in completions:
+            assert c.display_meta is not None
 
     def test_partial_match_he(self, completer):
         texts = _completion_texts(_get_completions(completer, "he"))

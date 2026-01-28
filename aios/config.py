@@ -268,6 +268,6 @@ def is_first_login() -> bool:
             # If setup_complete is not set, treat as first login
             # This handles old config files created before the flag was added
             return True
-    except Exception:
-        # On any error, assume first login to be safe
+    except (OSError, IOError, KeyError, ValueError) as e:
+        # On any error reading config, assume first login to be safe
         return True

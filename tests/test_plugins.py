@@ -312,7 +312,8 @@ class TestRecipeExecutor:
                     description="Conditional",
                     tool_name="tool2",
                     tool_params={},
-                    condition="context.get('run_step2', False)"
+                    # Use safe expression syntax (no function calls)
+                    condition="context.run_step2 == True"
                 )
             ]
         )

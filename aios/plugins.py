@@ -8,15 +8,263 @@ Provides:
 - Recipe/workflow system
 """
 
+import ast
+import logging
+import operator
 import os
+import re
 import sys
 import json
 import importlib
 import importlib.util
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Safe Expression Evaluator - replaces dangerous eval() for recipe conditions
+# ---------------------------------------------------------------------------
+
+# Forbidden patterns that could indicate code injection attempts
+FORBIDDEN_PATTERNS = re.compile(
+    r'(__\w+__|import|eval|exec|compile|open|globals|locals|vars|'
+    r'getattr|setattr|delattr|hasattr|type|isinstance|issubclass|'
+    r'callable|classmethod|staticmethod|property|super|'
+    r'breakpoint|input|print|exit|quit|help|license|credits|copyright)',
+    re.IGNORECASE
+)
+
+# Supported comparison operators
+SAFE_OPERATORS = {
+    ast.Eq: operator.eq,
+    ast.NotEq: operator.ne,
+    ast.Lt: operator.lt,
+    ast.LtE: operator.le,
+    ast.Gt: operator.gt,
+    ast.GtE: operator.ge,
+    ast.In: lambda a, b: a in b,
+    ast.NotIn: lambda a, b: a not in b,
+    ast.Is: operator.is_,
+    ast.IsNot: operator.is_not,
+}
+
+# Supported boolean operators
+BOOL_OPERATORS = {
+    ast.And: lambda vals: all(vals),
+    ast.Or: lambda vals: any(vals),
+}
+
+
+class SafeExpressionError(Exception):
+    """Raised when an expression cannot be safely evaluated."""
+    pass
+
+
+class SafeExpressionEvaluator:
+    """
+    Safely evaluate simple boolean expressions without using eval().
+
+    Supports:
+    - Simple comparisons: context.key == value, context.key > 5
+    - Boolean operators: and, or, not
+    - Literal values: strings, numbers, booleans, None, lists
+    - Context variable access: context.key, context['key']
+
+    Rejects:
+    - Function calls
+    - Attribute access on non-context objects
+    - Any potentially dangerous operations
+
+    Example valid expressions:
+    - "context.status == 'success'"
+    - "context.count > 0 and context.enabled"
+    - "context.value in [1, 2, 3]"
+    - "not context.skip"
+    """
+
+    def __init__(self, context: Dict[str, Any]):
+        self.context = context
+
+    def evaluate(self, expression: str) -> bool:
+        """
+        Safely evaluate a boolean expression.
+
+        Args:
+            expression: A simple boolean expression string
+
+        Returns:
+            The boolean result of the expression
+
+        Raises:
+            SafeExpressionError: If the expression is invalid or unsafe
+        """
+        # Check for forbidden patterns first
+        if FORBIDDEN_PATTERNS.search(expression):
+            raise SafeExpressionError(
+                f"Expression contains forbidden operation: {expression}"
+            )
+
+        try:
+            tree = ast.parse(expression, mode='eval')
+        except SyntaxError as e:
+            raise SafeExpressionError(f"Invalid expression syntax: {e}")
+
+        try:
+            result = self._eval_node(tree.body)
+            return bool(result)
+        except SafeExpressionError:
+            raise
+        except Exception as e:
+            raise SafeExpressionError(f"Failed to evaluate expression: {e}")
+
+    def _eval_node(self, node: ast.AST) -> Any:
+        """Recursively evaluate an AST node."""
+
+        # Literal values
+        if isinstance(node, ast.Constant):
+            return node.value
+
+        # For Python 3.7 compatibility (Num, Str, etc. are deprecated but may exist)
+        if isinstance(node, ast.Num):  # type: ignore
+            return node.n  # type: ignore
+        if isinstance(node, ast.Str):  # type: ignore
+            return node.s  # type: ignore
+        if isinstance(node, ast.NameConstant):  # type: ignore
+            return node.value  # type: ignore
+
+        # List literals
+        if isinstance(node, ast.List):
+            return [self._eval_node(elt) for elt in node.elts]
+
+        # Tuple literals
+        if isinstance(node, ast.Tuple):
+            return tuple(self._eval_node(elt) for elt in node.elts)
+
+        # Dict literals
+        if isinstance(node, ast.Dict):
+            keys = [self._eval_node(k) if k else None for k in node.keys]
+            values = [self._eval_node(v) for v in node.values]
+            return dict(zip(keys, values))
+
+        # Name lookup (only 'context' is allowed)
+        if isinstance(node, ast.Name):
+            if node.id == 'context':
+                return self.context
+            elif node.id in ('True', 'False', 'None'):
+                return {'True': True, 'False': False, 'None': None}[node.id]
+            else:
+                raise SafeExpressionError(
+                    f"Unknown variable '{node.id}'. Only 'context' is allowed."
+                )
+
+        # Attribute access (only on context)
+        if isinstance(node, ast.Attribute):
+            obj = self._eval_node(node.value)
+            if obj is not self.context:
+                raise SafeExpressionError(
+                    f"Attribute access only allowed on 'context', not on {type(obj).__name__}"
+                )
+            return self.context.get(node.attr)
+
+        # Subscript access (context['key'] or context[0])
+        if isinstance(node, ast.Subscript):
+            obj = self._eval_node(node.value)
+            if obj is not self.context and not isinstance(obj, (list, tuple, dict)):
+                raise SafeExpressionError(
+                    f"Subscript access only allowed on context or literals"
+                )
+            key = self._eval_node(node.slice)
+            if isinstance(obj, dict):
+                return obj.get(key)
+            return obj[key]
+
+        # Comparison operators
+        if isinstance(node, ast.Compare):
+            left = self._eval_node(node.left)
+            for op, comparator in zip(node.ops, node.comparators):
+                op_type = type(op)
+                if op_type not in SAFE_OPERATORS:
+                    raise SafeExpressionError(f"Unsupported comparison operator: {op_type.__name__}")
+                right = self._eval_node(comparator)
+                if not SAFE_OPERATORS[op_type](left, right):
+                    return False
+                left = right
+            return True
+
+        # Boolean operators (and, or)
+        if isinstance(node, ast.BoolOp):
+            op_type = type(node.op)
+            if op_type not in BOOL_OPERATORS:
+                raise SafeExpressionError(f"Unsupported boolean operator: {op_type.__name__}")
+            values = [self._eval_node(v) for v in node.values]
+            return BOOL_OPERATORS[op_type](values)
+
+        # Unary operators (not, -)
+        if isinstance(node, ast.UnaryOp):
+            operand = self._eval_node(node.operand)
+            if isinstance(node.op, ast.Not):
+                return not operand
+            elif isinstance(node.op, ast.USub):
+                return -operand
+            elif isinstance(node.op, ast.UAdd):
+                return +operand
+            else:
+                raise SafeExpressionError(f"Unsupported unary operator: {type(node.op).__name__}")
+
+        # Binary operators (+, -, *, /)
+        if isinstance(node, ast.BinOp):
+            left = self._eval_node(node.left)
+            right = self._eval_node(node.right)
+            if isinstance(node.op, ast.Add):
+                return left + right
+            elif isinstance(node.op, ast.Sub):
+                return left - right
+            elif isinstance(node.op, ast.Mult):
+                return left * right
+            elif isinstance(node.op, ast.Div):
+                return left / right
+            elif isinstance(node.op, ast.Mod):
+                return left % right
+            else:
+                raise SafeExpressionError(f"Unsupported binary operator: {type(node.op).__name__}")
+
+        # IfExp (ternary: a if condition else b)
+        if isinstance(node, ast.IfExp):
+            test = self._eval_node(node.test)
+            if test:
+                return self._eval_node(node.body)
+            return self._eval_node(node.orelse)
+
+        # Reject everything else (function calls, lambdas, etc.)
+        raise SafeExpressionError(
+            f"Unsupported expression type: {type(node).__name__}. "
+            f"Only simple comparisons and boolean operators are allowed."
+        )
+
+
+def safe_eval_condition(expression: str, context: Dict[str, Any]) -> bool:
+    """
+    Safely evaluate a recipe condition expression.
+
+    This is a safe replacement for eval() that only allows simple
+    boolean expressions with context variable access.
+
+    Args:
+        expression: The condition expression to evaluate
+        context: The recipe execution context
+
+    Returns:
+        True if the condition is met, False otherwise
+
+    Raises:
+        SafeExpressionError: If the expression is invalid or unsafe
+    """
+    evaluator = SafeExpressionEvaluator(context)
+    return evaluator.evaluate(expression)
 
 
 @dataclass
@@ -406,12 +654,20 @@ class RecipeExecutor:
             if on_step:
                 on_step(step, i)
 
-            # Check condition
+            # Check condition using safe expression evaluator (no eval())
             if step.condition:
                 try:
-                    if not eval(step.condition, {"context": self._context}):
+                    if not safe_eval_condition(step.condition, self._context):
+                        logger.debug(f"Recipe step {i} skipped: condition not met")
                         continue
-                except Exception:
+                except SafeExpressionError as e:
+                    logger.warning(f"Recipe step {i} condition failed: {e}")
+                    self._context["_results"].append({
+                        "step": i,
+                        "tool": step.tool_name,
+                        "success": False,
+                        "error": f"Condition evaluation failed: {e}"
+                    })
                     continue
 
             # Execute step

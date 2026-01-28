@@ -213,5 +213,6 @@ class CodeRunner:
             with open(path) as f:
                 data = json.load(f)
             return CodeSession.from_dict(data)
-        except Exception:
+        except (OSError, IOError, json.JSONDecodeError, KeyError, ValueError) as e:
+            logger.debug(f"Failed to load code session from {path}: {e}")
             return None

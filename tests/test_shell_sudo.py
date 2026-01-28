@@ -1,4 +1,4 @@
-"""Tests for sudo, timeout, and streaming features in AIOSShell."""
+"""Tests for sudo, timeout, and streaming features in CommandHandler."""
 
 from unittest.mock import MagicMock, patch, PropertyMock
 from dataclasses import dataclass
@@ -15,46 +15,43 @@ from aios.tasks import TaskManager
 # Helpers — lightweight stand-ins so we don't need a full AIOSShell
 # ---------------------------------------------------------------------------
 
-def _make_shell_stub(mock_config):
+def _make_command_handler(mock_config):
     """
-    Build an object that quacks enough like AIOSShell._handle_run_command
-    without actually spinning up the full shell (needs API key, etc.).
-    We patch the exact methods used inside _handle_run_command.
+    Build a CommandHandler with mocked dependencies for testing.
     """
     from aios.safety.guardrails import SafetyGuard, SafetyCheck, RiskLevel
     from aios.safety.audit import AuditLogger, ActionType
     from aios.ui.terminal import TerminalUI
     from aios.ui.prompts import ConfirmationPrompt
-
-    class _Stub:
-        pass
-
-    stub = _Stub()
+    from aios.handlers import CommandHandler
 
     # Provide a real SafetyGuard (compiled patterns are needed)
     with patch("aios.safety.guardrails.get_config", return_value=mock_config):
-        stub.safety = SafetyGuard()
+        safety = SafetyGuard()
 
-    stub.ui = MagicMock(spec=TerminalUI)
-    stub.prompts = MagicMock(spec=ConfirmationPrompt)
-    stub.audit = MagicMock(spec=AuditLogger)
-    stub.executor = MagicMock()
-    stub.executor.DEFAULT_TIMEOUT = 30
-    stub.streaming_executor = MagicMock()
-    stub.task_manager = TaskManager()
+    ui = MagicMock(spec=TerminalUI)
+    prompts = MagicMock(spec=ConfirmationPrompt)
+    audit = MagicMock(spec=AuditLogger)
+    executor = MagicMock()
+    executor.DEFAULT_TIMEOUT = 30
+    task_manager = TaskManager()
 
-    # Import the method and bind it
-    from aios.shell import AIOSShell
-    import types
-
-    stub._handle_run_command = types.MethodType(
-        AIOSShell._handle_run_command, stub
-    )
-    stub._execute_streaming = types.MethodType(
-        AIOSShell._execute_streaming, stub
+    handler = CommandHandler(
+        executor=executor,
+        safety=safety,
+        audit=audit,
+        ui=ui,
+        prompts=prompts,
+        task_manager=task_manager,
     )
 
-    return stub
+    # Expose mocks for assertions
+    handler._mock_executor = executor
+    handler._mock_ui = ui
+    handler._mock_prompts = prompts
+    handler._mock_audit = audit
+
+    return handler
 
 
 def _ok_result(**kwargs):
@@ -79,51 +76,51 @@ class TestSudoPrepend:
     """use_sudo flag should prepend 'sudo ' to the command."""
 
     def test_use_sudo_prepends_sudo(self, mock_config):
-        stub = _make_shell_stub(mock_config)
-        stub.executor.execute.return_value = _ok_result()
+        handler = _make_command_handler(mock_config)
+        handler._mock_executor.execute.return_value = _ok_result()
 
         params = {
             "command": "apt-get update",
             "explanation": "Updating packages",
             "use_sudo": True,
         }
-        result = stub._handle_run_command(params)
+        result = handler.handle_run_command(params)
 
         # executor.execute should have received the sudo-prefixed command
-        call_args = stub.executor.execute.call_args
+        call_args = handler._mock_executor.execute.call_args
         actual_cmd = call_args[0][0] if call_args[0] else call_args[1].get("command", "")
         # If streaming was not used, the command goes through executor.execute
         # The command string should start with 'sudo '
         assert actual_cmd.startswith("sudo "), f"Expected sudo prefix, got: {actual_cmd}"
 
     def test_use_sudo_no_double_prefix(self, mock_config):
-        stub = _make_shell_stub(mock_config)
-        stub.executor.execute.return_value = _ok_result()
+        handler = _make_command_handler(mock_config)
+        handler._mock_executor.execute.return_value = _ok_result()
 
         params = {
             "command": "sudo apt-get update",
             "explanation": "Updating packages",
             "use_sudo": True,
         }
-        result = stub._handle_run_command(params)
+        result = handler.handle_run_command(params)
 
-        call_args = stub.executor.execute.call_args
+        call_args = handler._mock_executor.execute.call_args
         actual_cmd = call_args[0][0] if call_args[0] else call_args[1].get("command", "")
         # Should NOT have double sudo
         assert not actual_cmd.startswith("sudo sudo"), f"Double sudo prefix: {actual_cmd}"
         assert actual_cmd.startswith("sudo "), f"Expected single sudo prefix, got: {actual_cmd}"
 
     def test_no_sudo_by_default(self, mock_config):
-        stub = _make_shell_stub(mock_config)
-        stub.executor.execute.return_value = _ok_result()
+        handler = _make_command_handler(mock_config)
+        handler._mock_executor.execute.return_value = _ok_result()
 
         params = {
             "command": "ls -la",
             "explanation": "Listing files",
         }
-        result = stub._handle_run_command(params)
+        result = handler.handle_run_command(params)
 
-        call_args = stub.executor.execute.call_args
+        call_args = handler._mock_executor.execute.call_args
         actual_cmd = call_args[0][0] if call_args[0] else call_args[1].get("command", "")
         assert actual_cmd == "ls -la"
 
@@ -132,35 +129,35 @@ class TestCustomTimeout:
     """Custom timeout values should reach the executor."""
 
     def test_custom_timeout_passed(self, mock_config):
-        stub = _make_shell_stub(mock_config)
-        stub.executor.execute.return_value = _ok_result()
+        handler = _make_command_handler(mock_config)
+        handler._mock_executor.execute.return_value = _ok_result()
 
         params = {
             "command": "wget http://example.com/big.tar.gz",
             "explanation": "Downloading file",
             "timeout": 1800,
         }
-        result = stub._handle_run_command(params)
+        result = handler.handle_run_command(params)
 
-        call_args = stub.executor.execute.call_args
+        call_args = handler._mock_executor.execute.call_args
         assert call_args[1].get("timeout") == 1800 or (
             len(call_args[0]) > 2 and call_args[0][2] == 1800
         )
 
     def test_timeout_info_shown_when_over_60(self, mock_config):
-        stub = _make_shell_stub(mock_config)
-        stub.executor.execute.return_value = _ok_result()
+        handler = _make_command_handler(mock_config)
+        handler._mock_executor.execute.return_value = _ok_result()
 
         params = {
             "command": "make -j4",
             "explanation": "Compiling",
             "timeout": 600,
         }
-        stub._handle_run_command(params)
+        handler.handle_run_command(params)
 
         # Should have printed an info message about the timeout
-        stub.ui.print_info.assert_called()
-        info_calls = [str(c) for c in stub.ui.print_info.call_args_list]
+        handler._mock_ui.print_info.assert_called()
+        info_calls = [str(c) for c in handler._mock_ui.print_info.call_args_list]
         assert any("10 minute" in c for c in info_calls), f"Expected timeout info, got: {info_calls}"
 
 
@@ -168,13 +165,13 @@ class TestLongRunningStreaming:
     """long_running flag should delegate to the streaming executor."""
 
     def test_long_running_uses_streaming(self, mock_config):
-        stub = _make_shell_stub(mock_config)
+        handler = _make_command_handler(mock_config)
 
         # Make the streaming display context manager work
         mock_display = MagicMock()
         mock_display.__enter__ = MagicMock(return_value=mock_display)
         mock_display.__exit__ = MagicMock(return_value=False)
-        stub.ui.print_streaming_output.return_value = mock_display
+        handler._mock_ui.print_streaming_output.return_value = mock_display
 
         # Mock Popen so no real process is spawned
         mock_proc = MagicMock()
@@ -191,39 +188,38 @@ class TestLongRunningStreaming:
                 "timeout": 3600,
                 "long_running": True,
             }
-            result = stub._handle_run_command(params)
+            result = handler.handle_run_command(params)
 
         # Streaming display should have been used, not the standard executor
-        stub.ui.print_streaming_output.assert_called_once()
-        stub.executor.execute.assert_not_called()
+        handler._mock_ui.print_streaming_output.assert_called_once()
+        handler._mock_executor.execute.assert_not_called()
 
     def test_non_long_running_uses_standard(self, mock_config):
-        stub = _make_shell_stub(mock_config)
-        stub.executor.execute.return_value = _ok_result()
+        handler = _make_command_handler(mock_config)
+        handler._mock_executor.execute.return_value = _ok_result()
 
         params = {
             "command": "echo hello",
             "explanation": "Test",
         }
-        result = stub._handle_run_command(params)
+        result = handler.handle_run_command(params)
 
-        stub.executor.execute.assert_called_once()
-        stub.streaming_executor.execute_streaming.assert_not_called()
+        handler._mock_executor.execute.assert_called_once()
 
 
 class TestTimeoutMessage:
     """Timeout should produce a user-friendly message."""
 
     def test_timeout_message(self, mock_config):
-        stub = _make_shell_stub(mock_config)
-        stub.executor.execute.return_value = _timeout_result()
+        handler = _make_command_handler(mock_config)
+        handler._mock_executor.execute.return_value = _timeout_result()
 
         params = {
             "command": "sleep 999",
             "explanation": "Sleeping",
             "timeout": 120,
         }
-        result = stub._handle_run_command(params)
+        result = handler.handle_run_command(params)
 
         assert not result.success
         assert "timed out" in result.user_friendly_message.lower()

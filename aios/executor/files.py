@@ -6,15 +6,20 @@ Provides safe file operations with:
 - Permission checks
 - Size limits
 - User-friendly error messages
+- Path traversal protection
 """
 
+import logging
 import os
+import platform
 import shutil
 import mimetypes
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -103,23 +108,42 @@ class FileHandler:
         Ensure a path is safe to access.
 
         Resolves path and checks it's within allowed locations.
+        Raises PermissionError if path is outside allowed roots.
+
+        Args:
+            path: The path to validate
+
+        Returns:
+            Resolved Path object
+
+        Raises:
+            PermissionError: If the path is outside allowed locations
         """
         p = Path(path).expanduser().resolve()
 
-        # For now, allow access to user's home and /tmp
-        # Can be made more restrictive based on config
-        allowed_roots = [self.home, Path("/tmp")]
+        # Platform-aware allowed roots
+        if platform.system() == "Windows":
+            temp_dir = Path(os.environ.get("TEMP", os.environ.get("TMP", "C:\\Temp")))
+            allowed_roots = [self.home, temp_dir]
+        else:
+            allowed_roots = [self.home, Path("/tmp")]
 
         for root in allowed_roots:
             try:
+                # Ensure root exists and is resolved
+                root = root.resolve()
                 p.relative_to(root)
                 return p
             except ValueError:
                 continue
 
-        # Allow absolute paths but warn
-        # In production, this should be more restrictive
-        return p
+        # SECURITY: Reject paths outside allowed roots
+        allowed_str = ", ".join(str(r) for r in allowed_roots)
+        logger.warning(f"Path access denied: {p} is outside allowed roots ({allowed_str})")
+        raise PermissionError(
+            f"Access denied: '{path}' is outside allowed locations. "
+            f"Only files within {allowed_str} are accessible."
+        )
 
     def _get_backup_path(self, file_path: Path) -> Path:
         """Get the backup path for a file."""
@@ -517,7 +541,8 @@ class FileHandler:
                 is_hidden=file_path.name.startswith("."),
                 mime_type=mime_type
             )
-        except Exception:
+        except (OSError, IOError, PermissionError, ValueError) as e:
+            logger.debug(f"Failed to get file info for {path}: {e}")
             return None
 
     def restore_backup(self, backup_path: str, original_path: str) -> FileResult:

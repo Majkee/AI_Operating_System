@@ -5,6 +5,100 @@ All notable changes to AIOS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.14] - 2026-01-28
+
+### Fixed
+
+#### GitHub Actions CI Fixes
+- **Docker workflow**: Added `load: true` to buildx so image is available for `docker run` test
+- **Snap workflow**: Replaced deprecated `architectures` with `platforms` for core24 base
+- **Test matrix**: Removed Python 3.14 (not yet released)
+- **YAML test**: Skip `test_all_playbooks_valid_yaml` if PyYAML not installed
+
+### Changed
+- Updated snap version to 0.8.13
+- Removed Python 3.14 from classifiers in pyproject.toml
+
+## [0.8.13] - 2026-01-28
+
+### Added
+
+#### Claude Code Skill: Documentation and Versioning Guide
+- New `/docs` skill in `.claude/skills/docs.md`
+- Explains semantic versioning conventions (MAJOR.MINOR.PATCH)
+- Documents changelog format following Keep a Changelog
+- Provides templates for changelog entries
+- Includes release checklist and commit message format
+- Quick reference for common versioning tasks
+
+## [0.8.12] - 2026-01-28
+
+### Added
+
+#### Double-Tap Tab Shows All Commands
+- Pressing Tab on empty input now displays all available commands with their descriptions
+- Updated bottom toolbar hint: "Tab Tab show all commands"
+- Enhanced discoverability of shell commands for new users
+
+## [0.8.11] - 2026-01-28
+
+### Security
+
+#### Critical: Safe Expression Evaluator for Recipe Conditions
+- **BREAKING**: Replaced dangerous `eval()` in `aios/plugins.py:412` with safe AST-based expression evaluator
+- New `SafeExpressionEvaluator` class supports only safe operations:
+  - Simple comparisons: `==`, `!=`, `<`, `>`, `<=`, `>=`, `in`, `not in`
+  - Boolean operators: `and`, `or`, `not`
+  - Context variable access: `context.key`, `context['key']`
+  - Literal values: strings, numbers, booleans, None, lists, tuples, dicts
+- Rejects dangerous patterns: `import`, `eval`, `exec`, `__dunder__`, function calls
+- `SafeExpressionError` exception for invalid/unsafe expressions
+- `safe_eval_condition()` helper function
+
+#### Path Traversal Protection
+- `FileHandler._ensure_safe_path()` now **rejects** paths outside allowed roots (was: warn only)
+- Platform-aware temp directory detection (Windows: `%TEMP%`, Linux: `/tmp`)
+- All file tool handlers (`handle_read_file`, `handle_write_file`, `handle_search_files`, `handle_list_directory`) catch and handle `PermissionError`
+- Proper logging of access denied attempts
+
+### Added
+
+#### Comprehensive Handler Tests
+- New `tests/test_handlers.py` with 46 tests covering:
+  - `TestCommandHandler` (8): simple execution, sudo, timeout, blocked commands, confirmation, background tasks, streaming
+  - `TestFileToolHandler` (11): read/write/search/list with success, errors, permission denied
+  - `TestSystemHandler` (5): general/disk/memory/cpu/processes info
+  - `TestAppHandler` (8): install/remove/search packages, clarification, open application
+  - `TestPathValidation` (3): home directory, temp directory, system path rejection
+  - `TestSafeExpressionEvaluator` (11): equality, comparisons, boolean ops, membership, forbidden patterns
+
+### Changed
+
+#### Exception Handling Improvements
+- Replaced 19 bare `except Exception:` handlers with specific exception types
+- Added logging throughout codebase for better debugging:
+  - `aios/ui/completions.py` — session fetcher errors
+  - `aios/shell.py` — session ID fetching
+  - `aios/context/session.py` — save/load/list sessions
+  - `aios/main.py` — config file reading
+  - `aios/tasks/models.py` — display callback errors
+  - `aios/safety/audit.py` — audit export
+  - `aios/commands/sessions.py`, `aios/commands/code.py` — date parsing
+  - `aios/commands/display.py` — credential listing
+  - `aios/config.py` — first login check
+  - `aios/code/runner.py` — session loading
+  - `aios/executor/files.py` — file info retrieval
+  - `aios/handlers/commands.py` — streaming display callback
+
+### Fixed
+- `tests/test_plugins.py::TestRecipeExecutor::test_execute_with_condition` updated to use safe expression syntax
+
+### Tests
+- Total tests: 490 passed, 10 skipped
+- New handler tests: 46
+
+---
+
 ## [0.8.10] - 2026-01-28
 
 ### Added

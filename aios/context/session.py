@@ -8,11 +8,14 @@ Handles:
 """
 
 import json
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass, field, asdict
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -197,7 +200,8 @@ class SessionManager:
             with open(session_file, "w") as f:
                 json.dump(self._session.to_dict(), f, indent=2)
             return True
-        except Exception:
+        except (OSError, IOError, TypeError, ValueError) as e:
+            logger.warning(f"Failed to save session: {e}")
             return False
 
     def load_session(self, session_id: str) -> Optional[SessionState]:
@@ -211,7 +215,8 @@ class SessionManager:
                 data = json.load(f)
                 self._session = SessionState.from_dict(data)
                 return self._session
-        except Exception:
+        except (OSError, IOError, json.JSONDecodeError, KeyError, ValueError) as e:
+            logger.warning(f"Failed to load session {session_id}: {e}")
             return None
 
     def list_sessions(self, limit: int = 10) -> List[Dict[str, str]]:
@@ -230,7 +235,8 @@ class SessionManager:
                         "started_at": data["started_at"],
                         "message_count": len(data.get("messages", []))
                     })
-            except Exception:
+            except (OSError, IOError, json.JSONDecodeError, KeyError) as e:
+                logger.debug(f"Skipping corrupt session file {session_file}: {e}")
                 continue
 
         return sessions

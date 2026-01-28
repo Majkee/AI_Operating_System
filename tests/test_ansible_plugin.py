@@ -507,7 +507,7 @@ class TestBuiltinPlaybooks:
 
     def test_all_playbooks_valid_yaml(self):
         """Test that all built-in playbooks are valid YAML."""
-        import yaml
+        yaml = pytest.importorskip("yaml", reason="PyYAML not installed")
 
         for name, content in BUILTIN_PLAYBOOKS.items():
             try:

@@ -7,11 +7,14 @@ Provides:
 - create_bottom_toolbar: dynamic toolbar factory showing contextual hints
 """
 
+import logging
 from typing import Callable, Iterable, List, Optional
 
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.formatted_text import HTML
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -186,8 +189,14 @@ class AIOSCompleter(Completer):
 
         word = text.lower()
 
-        # Don't complete on empty input
+        # On empty input (double-tap Tab), show all commands with descriptions
         if not word:
+            for entry in COMMAND_REGISTRY:
+                yield Completion(
+                    entry["name"],
+                    start_position=0,
+                    display_meta=entry["help"],
+                )
             return
 
         for entry in COMMAND_REGISTRY:
@@ -214,7 +223,8 @@ class AIOSCompleter(Completer):
             return
         try:
             session_ids = self._session_fetcher()
-        except Exception:
+        except (OSError, IOError, ValueError, RuntimeError) as e:
+            logger.debug(f"Failed to fetch session IDs for completion: {e}")
             return
         for sid in session_ids:
             if sid.lower().startswith(prefix.lower()):
@@ -229,7 +239,8 @@ class AIOSCompleter(Completer):
             return
         try:
             session_ids = self._code_session_fetcher()
-        except Exception:
+        except (OSError, IOError, ValueError, RuntimeError) as e:
+            logger.debug(f"Failed to fetch code session IDs for completion: {e}")
             return
         for sid in session_ids:
             if sid.lower().startswith(prefix.lower()):
@@ -249,7 +260,7 @@ def _compute_left_toolbar(text: str) -> str:
     """Return the left-side toolbar HTML string based on current input text."""
     if not text:
         return (
-            "<b>Tab</b> command completion · "
+            "<b>Tab Tab</b> show all commands · "
             "Type a command or ask anything"
         )
 

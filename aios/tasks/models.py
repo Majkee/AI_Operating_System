@@ -5,6 +5,7 @@ Defines the BackgroundTask dataclass and TaskStatus enum used by the
 task manager to track long-running shell processes.
 """
 
+import logging
 import os
 import sys
 import time
@@ -13,6 +14,8 @@ import subprocess
 from enum import Enum
 from typing import Callable, List, Optional
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 
 class TaskStatus(Enum):
@@ -94,8 +97,9 @@ class BackgroundTask:
         if cb is not None:
             try:
                 cb(line)
-            except Exception:
-                pass
+            except (TypeError, ValueError, RuntimeError) as e:
+                # Callback failed - log but don't propagate
+                logger.debug(f"Display callback failed: {e}")
 
     def attach_display(self, callback: Callable[[str], None]) -> None:
         """Attach a live display callback."""

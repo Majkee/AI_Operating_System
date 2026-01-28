@@ -351,5 +351,7 @@ class AuditLogger:
                     f.write(entry.to_json() + "\n")
 
             return True
-        except Exception:
+        except (OSError, IOError, TypeError, ValueError) as e:
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to export audit log: {e}")
             return False
