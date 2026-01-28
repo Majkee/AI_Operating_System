@@ -54,6 +54,8 @@ RUN /app/venv/bin/pip install --no-cache-dir \
     && mkdir -p /usr/share/ansible/collections \
     && /app/venv/bin/ansible-galaxy collection install \
     ansible.netcommon \
+    ansible.posix \
+    community.general \
     cisco.ios \
     junipernetworks.junos \
     arista.eos \
@@ -80,7 +82,7 @@ RUN chown -R aios:aios /app
 
 # Create config directories with proper ownership
 RUN mkdir -p /home/aios/.config/aios/history \
-    /home/aios/.config/aios/plugins \
+    /home/aios/.config/aios/skills \
     /home/aios/.ansible \
     /home/aios/.ssh \
     && chown -R aios:aios /home/aios/.config \
@@ -97,7 +99,9 @@ ENV PATH="/app/venv/bin:$PATH"
 # Ansible configuration
 ENV ANSIBLE_HOST_KEY_CHECKING=False
 ENV ANSIBLE_RETRY_FILES_ENABLED=False
-ENV ANSIBLE_STDOUT_CALLBACK=yaml
+# Use default callback with yaml result format (community.general.yaml was removed in v12.0.0)
+ENV ANSIBLE_STDOUT_CALLBACK=default
+ENV ANSIBLE_RESULT_FORMAT=yaml
 
 # Anthropic API key must be provided at runtime via: docker run -e ANTHROPIC_API_KEY=sk-...
 # For Ansible network automation, mount your inventory and SSH keys:
