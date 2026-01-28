@@ -54,7 +54,7 @@ from .ratelimit import (
 )
 
 # Import refactored modules
-from .handlers import CommandHandler, FileToolHandler, SystemHandler, AppHandler
+from .handlers import CommandHandler, FileToolHandler, SystemHandler, AppHandler, LinuxToolsHandler
 from .commands import DisplayCommands, ConfigCommands, SessionCommands, CodeCommands
 
 
@@ -157,6 +157,14 @@ class AIOSShell:
             streaming_executor=self.cmd_handler._execute_streaming,
         )
 
+        self.linux_handler = LinuxToolsHandler(
+            executor=self.executor,
+            safety=self.safety,
+            audit=self.audit,
+            ui=self.ui,
+            prompts=self.prompts,
+        )
+
     def _init_commands(self) -> None:
         """Initialize shell commands."""
         self.display_cmds = DisplayCommands(
@@ -222,6 +230,16 @@ class AIOSShell:
         self.tool_handler.register("manage_application", self.app_handler.handle_manage_application)
         self.tool_handler.register("ask_clarification", self.app_handler.handle_ask_clarification)
         self.tool_handler.register("open_application", self.app_handler.handle_open_application)
+
+        # Linux-specific tools
+        self.tool_handler.register("manage_service", self.linux_handler.handle_manage_service)
+        self.tool_handler.register("manage_process", self.linux_handler.handle_manage_process)
+        self.tool_handler.register("network_diagnostics", self.linux_handler.handle_network_diagnostics)
+        self.tool_handler.register("view_logs", self.linux_handler.handle_view_logs)
+        self.tool_handler.register("archive_operations", self.linux_handler.handle_archive_operations)
+        self.tool_handler.register("manage_cron", self.linux_handler.handle_manage_cron)
+        self.tool_handler.register("disk_operations", self.linux_handler.handle_disk_operations)
+        self.tool_handler.register("user_management", self.linux_handler.handle_user_management)
 
     def _load_plugins(self) -> None:
         """Load plugins and register their tools."""

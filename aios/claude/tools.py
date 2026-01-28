@@ -306,6 +306,337 @@ Provide feedback about what's being opened.""",
             },
             "required": ["target", "explanation"]
         }
+    },
+    # Linux-specific tools
+    {
+        "name": "manage_service",
+        "description": """Manage systemd services. Use this for:
+- Checking service status (is nginx running?)
+- Starting/stopping services
+- Enabling/disabling services at boot
+- Viewing service logs
+
+Always explain what service you're managing and why.""",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["status", "start", "stop", "restart", "reload", "enable", "disable", "is-active", "logs"],
+                    "description": "Action to perform on the service"
+                },
+                "service": {
+                    "type": "string",
+                    "description": "Name of the systemd service (e.g., 'nginx', 'ssh', 'docker')"
+                },
+                "lines": {
+                    "type": "integer",
+                    "description": "Number of log lines to show (for 'logs' action)",
+                    "default": 50
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "What you're doing with this service (shown to user)"
+                }
+            },
+            "required": ["action", "service", "explanation"]
+        }
+    },
+    {
+        "name": "manage_process",
+        "description": """Manage system processes. Use this for:
+- Listing running processes by CPU/memory usage
+- Finding processes by name
+- Getting process details
+- Killing unresponsive processes
+
+Use with care - killing processes can cause data loss.""",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["list", "find", "kill", "info"],
+                    "description": "Action to perform"
+                },
+                "sort_by": {
+                    "type": "string",
+                    "enum": ["cpu", "memory"],
+                    "description": "How to sort process list",
+                    "default": "cpu"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max number of processes to list",
+                    "default": 20
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Process name to find or kill"
+                },
+                "pid": {
+                    "type": "integer",
+                    "description": "Process ID for kill or info actions"
+                },
+                "signal": {
+                    "type": "string",
+                    "enum": ["TERM", "KILL", "HUP", "INT"],
+                    "description": "Signal to send when killing",
+                    "default": "TERM"
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "What you're doing (shown to user)"
+                }
+            },
+            "required": ["action", "explanation"]
+        }
+    },
+    {
+        "name": "network_diagnostics",
+        "description": """Perform network diagnostics. Use this for:
+- Checking network interface status
+- Testing connectivity (ping)
+- Viewing open ports
+- Checking active connections
+- DNS lookups
+- Testing if a specific port is open
+
+Helps troubleshoot network issues.""",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["status", "ping", "ports", "connections", "dns", "check_port", "route"],
+                    "description": "Diagnostic action to perform"
+                },
+                "host": {
+                    "type": "string",
+                    "description": "Hostname or IP for ping/dns/check_port actions"
+                },
+                "port": {
+                    "type": "integer",
+                    "description": "Port number for check_port action"
+                },
+                "count": {
+                    "type": "integer",
+                    "description": "Number of pings to send",
+                    "default": 4
+                },
+                "state": {
+                    "type": "string",
+                    "description": "Connection state filter (established, listening, etc.)",
+                    "default": "established"
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "What you're checking (shown to user)"
+                }
+            },
+            "required": ["action", "explanation"]
+        }
+    },
+    {
+        "name": "view_logs",
+        "description": """View system logs using journalctl. Use this for:
+- Viewing recent system logs
+- Checking kernel messages
+- Viewing boot logs
+- Checking service-specific logs
+- Searching logs for errors
+
+Essential for troubleshooting system issues.""",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "log_type": {
+                    "type": "string",
+                    "enum": ["system", "kernel", "boot", "auth", "cron"],
+                    "description": "Type of logs to view. Use 'unit:servicename' for specific services.",
+                    "default": "system"
+                },
+                "lines": {
+                    "type": "integer",
+                    "description": "Number of log lines to show",
+                    "default": 50
+                },
+                "since": {
+                    "type": "string",
+                    "description": "Show logs since time (e.g., '1 hour ago', 'today', '2024-01-01')"
+                },
+                "grep": {
+                    "type": "string",
+                    "description": "Filter logs by pattern (case insensitive)"
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "What you're looking for (shown to user)"
+                }
+            },
+            "required": ["explanation"]
+        }
+    },
+    {
+        "name": "archive_operations",
+        "description": """Work with archive files (tar, zip, 7z). Use this for:
+- Listing archive contents
+- Extracting archives
+- Creating archives from files/directories
+
+Supports tar.gz, tar.bz2, tar.xz, zip, and 7z formats.""",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["list", "extract", "create"],
+                    "description": "Action to perform"
+                },
+                "archive_path": {
+                    "type": "string",
+                    "description": "Path to the archive file"
+                },
+                "destination": {
+                    "type": "string",
+                    "description": "Extraction destination directory",
+                    "default": "."
+                },
+                "source_paths": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Files/directories to include in archive (for create)"
+                },
+                "compression": {
+                    "type": "string",
+                    "enum": ["gz", "bz2", "xz", "none"],
+                    "description": "Compression type for tar archives",
+                    "default": "gz"
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "What you're doing (shown to user)"
+                }
+            },
+            "required": ["action", "archive_path", "explanation"]
+        }
+    },
+    {
+        "name": "manage_cron",
+        "description": """Manage scheduled tasks (cron jobs). Use this for:
+- Listing current cron jobs
+- Adding new scheduled tasks
+- Removing cron jobs
+- Viewing system cron directories
+
+Cron schedule format: minute hour day month weekday (e.g., '0 * * * *' for hourly).""",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["list", "list_system", "add", "remove"],
+                    "description": "Action to perform"
+                },
+                "schedule": {
+                    "type": "string",
+                    "description": "Cron schedule (e.g., '0 * * * *', '@daily', '@hourly')"
+                },
+                "command": {
+                    "type": "string",
+                    "description": "Command to run (for add action)"
+                },
+                "pattern": {
+                    "type": "string",
+                    "description": "Pattern to match for removal"
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "What you're scheduling (shown to user)"
+                }
+            },
+            "required": ["action", "explanation"]
+        }
+    },
+    {
+        "name": "disk_operations",
+        "description": """Check disk space and storage information. Use this for:
+- Checking disk usage
+- Finding large files
+- Viewing directory sizes
+- Listing mount points and partitions
+
+Helps manage storage and find space issues.""",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["usage", "directory_size", "mounts", "partitions", "large_files"],
+                    "description": "Action to perform"
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Path to check",
+                    "default": "/"
+                },
+                "depth": {
+                    "type": "integer",
+                    "description": "Directory depth for size analysis",
+                    "default": 1
+                },
+                "min_size": {
+                    "type": "string",
+                    "description": "Minimum file size for large_files (e.g., '100M', '1G')",
+                    "default": "100M"
+                },
+                "human_readable": {
+                    "type": "boolean",
+                    "description": "Show sizes in human-readable format",
+                    "default": True
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "What you're checking (shown to user)"
+                }
+            },
+            "required": ["action", "explanation"]
+        }
+    },
+    {
+        "name": "user_management",
+        "description": """View user and login information. Use this for:
+- Listing user accounts
+- Checking current user info
+- Viewing group memberships
+- Checking who is logged in
+- Viewing recent login history
+
+Read-only operations for security - use run_command for user modifications.""",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["list", "current", "groups", "who", "last"],
+                    "description": "Action to perform"
+                },
+                "username": {
+                    "type": "string",
+                    "description": "Username to check groups for"
+                },
+                "count": {
+                    "type": "integer",
+                    "description": "Number of recent logins to show",
+                    "default": 10
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "What you're checking (shown to user)"
+                }
+            },
+            "required": ["action", "explanation"]
+        }
     }
 ]
 

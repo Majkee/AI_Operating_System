@@ -825,6 +825,386 @@ BUILTIN_RECIPES = [
             )
         ],
         category="backup"
+    ),
+    # Service management recipes
+    Recipe(
+        name="web_server_status",
+        description="Check the status of common web servers",
+        trigger_phrases=[
+            "check web server",
+            "is nginx running",
+            "is apache running",
+            "web server status"
+        ],
+        steps=[
+            RecipeStep(
+                description="Check nginx status",
+                tool_name="manage_service",
+                tool_params={
+                    "action": "is-active",
+                    "service": "nginx",
+                    "explanation": "Checking if nginx is running"
+                }
+            ),
+            RecipeStep(
+                description="Check apache status",
+                tool_name="manage_service",
+                tool_params={
+                    "action": "is-active",
+                    "service": "apache2",
+                    "explanation": "Checking if Apache is running"
+                }
+            ),
+            RecipeStep(
+                description="Check listening ports",
+                tool_name="network_diagnostics",
+                tool_params={
+                    "action": "ports",
+                    "explanation": "Checking which ports are listening"
+                }
+            )
+        ],
+        category="monitoring"
+    ),
+    Recipe(
+        name="docker_cleanup",
+        description="Clean up Docker resources to free space",
+        trigger_phrases=[
+            "clean docker",
+            "docker cleanup",
+            "remove docker images",
+            "docker disk space"
+        ],
+        steps=[
+            RecipeStep(
+                description="Show Docker disk usage",
+                tool_name="run_command",
+                tool_params={
+                    "command": "docker system df",
+                    "explanation": "Checking Docker disk usage"
+                }
+            ),
+            RecipeStep(
+                description="List stopped containers",
+                tool_name="run_command",
+                tool_params={
+                    "command": "docker ps -a --filter status=exited --format 'table {{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Size}}'",
+                    "explanation": "Finding stopped containers"
+                }
+            ),
+            RecipeStep(
+                description="List dangling images",
+                tool_name="run_command",
+                tool_params={
+                    "command": "docker images --filter dangling=true",
+                    "explanation": "Finding unused Docker images"
+                }
+            ),
+            RecipeStep(
+                description="Prune unused resources",
+                tool_name="run_command",
+                tool_params={
+                    "command": "docker system prune -f",
+                    "explanation": "Removing unused Docker resources",
+                    "requires_confirmation": True
+                }
+            )
+        ],
+        category="maintenance"
+    ),
+    Recipe(
+        name="security_audit",
+        description="Perform a basic security audit of the system",
+        trigger_phrases=[
+            "security audit",
+            "security check",
+            "check security",
+            "is my system secure"
+        ],
+        steps=[
+            RecipeStep(
+                description="Check recent login attempts",
+                tool_name="user_management",
+                tool_params={
+                    "action": "last",
+                    "count": 20,
+                    "explanation": "Reviewing recent login history"
+                }
+            ),
+            RecipeStep(
+                description="Check currently logged in users",
+                tool_name="user_management",
+                tool_params={
+                    "action": "who",
+                    "explanation": "Checking who is currently logged in"
+                }
+            ),
+            RecipeStep(
+                description="Check listening network ports",
+                tool_name="network_diagnostics",
+                tool_params={
+                    "action": "ports",
+                    "explanation": "Reviewing open ports"
+                }
+            ),
+            RecipeStep(
+                description="Check auth logs for failures",
+                tool_name="view_logs",
+                tool_params={
+                    "log_type": "auth",
+                    "lines": 50,
+                    "grep": "Failed",
+                    "explanation": "Looking for failed authentication attempts"
+                }
+            )
+        ],
+        category="security"
+    ),
+    Recipe(
+        name="network_troubleshoot",
+        description="Troubleshoot network connectivity issues",
+        trigger_phrases=[
+            "network not working",
+            "no internet",
+            "can't connect",
+            "network troubleshoot",
+            "fix network"
+        ],
+        steps=[
+            RecipeStep(
+                description="Check network interfaces",
+                tool_name="network_diagnostics",
+                tool_params={
+                    "action": "status",
+                    "explanation": "Checking network interface status"
+                }
+            ),
+            RecipeStep(
+                description="Test local connectivity",
+                tool_name="network_diagnostics",
+                tool_params={
+                    "action": "ping",
+                    "host": "127.0.0.1",
+                    "count": 2,
+                    "explanation": "Testing local network stack"
+                }
+            ),
+            RecipeStep(
+                description="Test gateway connectivity",
+                tool_name="run_command",
+                tool_params={
+                    "command": "ip route | grep default | awk '{print $3}' | xargs -I {} ping -c 2 {}",
+                    "explanation": "Testing connection to gateway"
+                }
+            ),
+            RecipeStep(
+                description="Test DNS resolution",
+                tool_name="network_diagnostics",
+                tool_params={
+                    "action": "dns",
+                    "host": "google.com",
+                    "explanation": "Testing DNS resolution"
+                }
+            ),
+            RecipeStep(
+                description="Test internet connectivity",
+                tool_name="network_diagnostics",
+                tool_params={
+                    "action": "ping",
+                    "host": "8.8.8.8",
+                    "count": 3,
+                    "explanation": "Testing internet connectivity"
+                }
+            )
+        ],
+        category="troubleshooting"
+    ),
+    Recipe(
+        name="service_restart",
+        description="Safely restart a service with status checks",
+        trigger_phrases=[
+            "restart service",
+            "service not responding",
+            "restart nginx",
+            "restart apache",
+            "restart mysql"
+        ],
+        steps=[
+            RecipeStep(
+                description="Check current service status",
+                tool_name="run_command",
+                tool_params={
+                    "command": "systemctl list-units --type=service --state=running | head -20",
+                    "explanation": "Listing running services"
+                }
+            ),
+            RecipeStep(
+                description="Ask which service to restart",
+                tool_name="ask_clarification",
+                tool_params={
+                    "question": "Which service would you like to restart?",
+                    "options": ["nginx", "apache2", "mysql", "postgresql", "docker", "ssh"],
+                    "context": "Select a service from the list or type the name"
+                }
+            )
+        ],
+        category="administration"
+    ),
+    Recipe(
+        name="log_investigation",
+        description="Investigate system logs for errors",
+        trigger_phrases=[
+            "check logs",
+            "find errors",
+            "what went wrong",
+            "system errors",
+            "investigate logs"
+        ],
+        steps=[
+            RecipeStep(
+                description="Check recent system errors",
+                tool_name="view_logs",
+                tool_params={
+                    "log_type": "system",
+                    "lines": 100,
+                    "grep": "error",
+                    "explanation": "Looking for system errors"
+                }
+            ),
+            RecipeStep(
+                description="Check kernel messages",
+                tool_name="view_logs",
+                tool_params={
+                    "log_type": "kernel",
+                    "lines": 50,
+                    "explanation": "Checking kernel messages"
+                }
+            ),
+            RecipeStep(
+                description="Check boot messages",
+                tool_name="view_logs",
+                tool_params={
+                    "log_type": "boot",
+                    "lines": 50,
+                    "explanation": "Reviewing boot messages"
+                }
+            )
+        ],
+        category="troubleshooting"
+    ),
+    Recipe(
+        name="process_cleanup",
+        description="Find and manage resource-hungry processes",
+        trigger_phrases=[
+            "system slow",
+            "high cpu",
+            "high memory",
+            "kill processes",
+            "what's using resources"
+        ],
+        steps=[
+            RecipeStep(
+                description="Find top CPU consumers",
+                tool_name="manage_process",
+                tool_params={
+                    "action": "list",
+                    "sort_by": "cpu",
+                    "limit": 10,
+                    "explanation": "Finding processes using most CPU"
+                }
+            ),
+            RecipeStep(
+                description="Find top memory consumers",
+                tool_name="manage_process",
+                tool_params={
+                    "action": "list",
+                    "sort_by": "memory",
+                    "limit": 10,
+                    "explanation": "Finding processes using most memory"
+                }
+            ),
+            RecipeStep(
+                description="Check system memory",
+                tool_name="get_system_info",
+                tool_params={
+                    "info_type": "memory",
+                    "explanation": "Checking overall memory usage"
+                }
+            )
+        ],
+        category="monitoring"
+    ),
+    Recipe(
+        name="cron_setup",
+        description="View and manage scheduled tasks",
+        trigger_phrases=[
+            "scheduled tasks",
+            "cron jobs",
+            "automation",
+            "schedule task",
+            "view cron"
+        ],
+        steps=[
+            RecipeStep(
+                description="List user cron jobs",
+                tool_name="manage_cron",
+                tool_params={
+                    "action": "list",
+                    "explanation": "Checking your scheduled tasks"
+                }
+            ),
+            RecipeStep(
+                description="List system cron jobs",
+                tool_name="manage_cron",
+                tool_params={
+                    "action": "list_system",
+                    "explanation": "Checking system-wide scheduled tasks"
+                }
+            )
+        ],
+        category="administration"
+    ),
+    Recipe(
+        name="disk_analysis",
+        description="Analyze disk space usage in detail",
+        trigger_phrases=[
+            "disk full",
+            "out of space",
+            "what's using disk",
+            "disk analysis",
+            "storage check"
+        ],
+        steps=[
+            RecipeStep(
+                description="Check overall disk usage",
+                tool_name="disk_operations",
+                tool_params={
+                    "action": "usage",
+                    "explanation": "Checking disk space on all partitions"
+                }
+            ),
+            RecipeStep(
+                description="Find largest directories in home",
+                tool_name="disk_operations",
+                tool_params={
+                    "action": "directory_size",
+                    "path": "~",
+                    "depth": 2,
+                    "explanation": "Finding large directories in home folder"
+                }
+            ),
+            RecipeStep(
+                description="Find large files",
+                tool_name="disk_operations",
+                tool_params={
+                    "action": "large_files",
+                    "path": "~",
+                    "min_size": "100M",
+                    "explanation": "Finding files larger than 100MB"
+                }
+            )
+        ],
+        category="maintenance"
     )
 ]
 

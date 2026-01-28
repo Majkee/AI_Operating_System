@@ -5,6 +5,122 @@ All notable changes to AIOS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-01-28
+
+### Added
+
+#### Claude Code Skill: Docker Management Guide
+- New `/docker` skill in `.claude/skills/docker.md`
+- Quick reference tables for container lifecycle, image management, Docker Compose
+- Common tasks: status viewing, troubleshooting, cleanup, networking, volumes
+- Docker Compose patterns and best practices
+- Dockerfile best practices with multi-stage build examples
+- Registry operations (Docker Hub, GHCR, private registries)
+- Resource limits, health checks, debugging techniques
+- Security best practices (non-root, read-only, capabilities)
+- Common issues and solutions
+- AIOS integration examples
+
+#### Example Recipes (10 New Built-in Recipes)
+New workflow recipes that demonstrate the recipe system and use the new Linux tools:
+
+| Recipe | Trigger | Description |
+|--------|---------|-------------|
+| `web_server_status` | "check web server" | Check nginx/apache status and listening ports |
+| `docker_cleanup` | "clean docker" | Show Docker disk usage and prune unused resources |
+| `security_audit` | "security check" | Review logins, open ports, and auth failures |
+| `network_troubleshoot` | "no internet" | Step-by-step network connectivity diagnosis |
+| `service_restart` | "restart service" | Interactive service restart with status checks |
+| `log_investigation` | "check logs" | Search system, kernel, and boot logs for errors |
+| `process_cleanup` | "system slow" | Find CPU/memory hungry processes |
+| `cron_setup` | "scheduled tasks" | View user and system cron jobs |
+| `disk_analysis` | "disk full" | Detailed disk usage analysis and large file finder |
+
+#### Ansible Integration in Docker Image
+- Added Ansible Core 2.15+ to Docker image
+- Pre-installed network automation collections:
+  - `ansible.netcommon` - Network common utilities
+  - `cisco.ios` - Cisco IOS devices
+  - `junipernetworks.junos` - Juniper devices
+  - `arista.eos` - Arista switches
+- Added SSH client and sshpass for device connectivity
+- Included `paramiko`, `netaddr`, `jmespath` Python packages
+- Ansible environment pre-configured (host key checking disabled, YAML output)
+- Plugins directory (`plugins/`) copied to `/etc/aios/plugins/`
+- SSH and Ansible directories created with proper permissions
+
+**Docker run example for Ansible:**
+```bash
+docker run -it \
+  -e ANTHROPIC_API_KEY=sk-... \
+  -v ~/.ssh:/home/aios/.ssh:ro \
+  -v ./inventory:/home/aios/inventory:ro \
+  aios
+```
+
+#### Linux Tools Suite (8 New Tools)
+Dedicated tools for common Linux operations, providing better structure and user feedback than generic `run_command`:
+
+1. **`manage_service`** - Systemd service management
+   - Check service status (`status`, `is-active`)
+   - Control services (`start`, `stop`, `restart`, `reload`)
+   - Enable/disable at boot (`enable`, `disable`)
+   - View service logs (`logs`)
+
+2. **`manage_process`** - Process management
+   - List processes sorted by CPU or memory (`list`)
+   - Find processes by name (`find`)
+   - Get process details (`info`)
+   - Kill processes by PID or name (`kill`) with signal options
+
+3. **`network_diagnostics`** - Network troubleshooting
+   - View network interfaces (`status`)
+   - Test connectivity (`ping`)
+   - Check listening ports (`ports`)
+   - View active connections (`connections`)
+   - DNS lookup (`dns`)
+   - Test specific port (`check_port`)
+   - View routing table (`route`)
+
+4. **`view_logs`** - System log viewing via journalctl
+   - System, kernel, boot, auth, cron logs
+   - Service-specific logs
+   - Time filtering (`since`)
+   - Pattern search (`grep`)
+
+5. **`archive_operations`** - Archive file handling
+   - List contents (`list`)
+   - Extract archives (`extract`)
+   - Create archives (`create`)
+   - Supports tar.gz, tar.bz2, tar.xz, zip, 7z
+
+6. **`manage_cron`** - Scheduled task management
+   - List user cron jobs (`list`)
+   - List system cron directories (`list_system`)
+   - Add new cron jobs (`add`)
+   - Remove cron jobs by pattern (`remove`)
+
+7. **`disk_operations`** - Storage information
+   - Check disk usage (`usage`)
+   - Analyze directory sizes (`directory_size`)
+   - View mount points (`mounts`)
+   - List partitions (`partitions`)
+   - Find large files (`large_files`)
+
+8. **`user_management`** - User information (read-only)
+   - List user accounts (`list`)
+   - Get current user info (`current`)
+   - View group memberships (`groups`)
+   - Check logged in users (`who`)
+   - View recent logins (`last`)
+
+#### Implementation Details
+- New `LinuxToolsHandler` class in `aios/handlers/linux.py`
+- 28 new tests in `tests/test_linux_tools.py`
+- Safety confirmations for dangerous operations (service control, process kill, archive extract, cron modifications)
+- Input validation to prevent command injection
+- User-friendly output messages
+
 ## [0.8.14] - 2026-01-28
 
 ### Fixed

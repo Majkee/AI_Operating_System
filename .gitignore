@@ -57,8 +57,9 @@ nul
 dist/
 build/
 
-# Claude Code
-.claude/
+# Claude Code (except skills which are project-specific)
+.claude/*
+!.claude/skills/
 
 # Snap build artifacts
 *.snap
