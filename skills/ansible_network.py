@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from aios.plugins import (
+from aios.skills import (
     PluginBase,
     PluginMetadata,
     ToolDefinition,

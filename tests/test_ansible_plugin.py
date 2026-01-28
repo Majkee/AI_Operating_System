@@ -8,7 +8,7 @@ import pytest
 
 # Import plugin components
 import sys
-sys.path.insert(0, str(Path(__file__).parent.parent / "plugins"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "skills"))
 
 from ansible_network import (
     AnsibleNetworkPlugin,
@@ -17,7 +17,7 @@ from ansible_network import (
     AnsibleExecutor,
     BUILTIN_PLAYBOOKS,
 )
-from aios.plugins import PluginBase, ToolDefinition, Recipe
+from aios.skills import PluginBase, ToolDefinition, Recipe
 
 
 class TestNetworkDevice:

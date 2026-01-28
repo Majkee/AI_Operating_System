@@ -62,7 +62,7 @@ RUN /app/venv/bin/pip install --no-cache-dir \
 
 # Copy application code
 COPY aios/ ./aios/
-COPY plugins/ ./plugins/
+COPY skills/ ./skills/
 COPY setup.py .
 COPY pyproject.toml .
 COPY README.md .
@@ -71,9 +71,9 @@ COPY README.md .
 # The default.toml is included as package data in aios/data/default.toml
 RUN /app/venv/bin/pip install --no-cache-dir -e .
 
-# Copy plugins to system-wide location for all users
-RUN mkdir -p /etc/aios/plugins \
-    && cp -r /app/plugins/* /etc/aios/plugins/ 2>/dev/null || true
+# Copy skills to system-wide location for all users
+RUN mkdir -p /etc/aios/skills \
+    && cp -r /app/skills/* /etc/aios/skills/ 2>/dev/null || true
 
 # Change ownership to non-root user
 RUN chown -R aios:aios /app

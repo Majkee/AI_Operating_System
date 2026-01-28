@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from aios.plugins import (
+from aios.skills import (
     ToolDefinition,
     RecipeStep,
     Recipe,
