@@ -173,7 +173,7 @@ class TestPluginManager:
     def setup_method(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
-        self.manager = PluginManager(plugin_dirs=[Path(self.temp_dir)])
+        self.manager = PluginManager(skill_dirs=[Path(self.temp_dir)])
 
     def teardown_method(self):
         """Clean up temp files."""
@@ -225,7 +225,7 @@ class TestPlugin(PluginBase):
     def test_find_matching_recipe(self):
         """Test finding a matching recipe."""
         # Create a manager with a test recipe
-        manager = PluginManager(plugin_dirs=[])
+        manager = PluginManager(skill_dirs=[])
         test_recipe = Recipe(
             name="test_recipe",
             description="Test",
@@ -240,7 +240,7 @@ class TestPlugin(PluginBase):
 
     def test_find_no_matching_recipe(self):
         """Test when no recipe matches."""
-        manager = PluginManager(plugin_dirs=[])
+        manager = PluginManager(skill_dirs=[])
         test_recipe = Recipe(
             name="test_recipe",
             description="Test",

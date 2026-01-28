@@ -36,8 +36,8 @@ from .errors import (
     ErrorBoundary,
     format_error_for_user,
 )
-from .plugins import (
-    get_plugin_manager,
+from .skills import (
+    get_skill_manager,
     ToolDefinition,
     Recipe,
 )
@@ -91,9 +91,9 @@ class AIOSShell:
         # Initialize tool handler
         self.tool_handler = ToolHandler()
 
-        # Initialize plugin system
-        self.plugin_manager = get_plugin_manager()
-        self._load_plugins()
+        # Initialize skill system
+        self.skill_manager = get_skill_manager()
+        self._load_skills()
 
         # Initialize caching
         self.system_cache = get_system_info_cache()
@@ -169,7 +169,7 @@ class AIOSShell:
         """Initialize shell commands."""
         self.display_cmds = DisplayCommands(
             ui=self.ui,
-            plugin_manager=self.plugin_manager,
+            skill_manager=self.skill_manager,
             rate_limiter=self.rate_limiter,
             system_cache=self.system_cache,
             tool_cache=self.tool_cache,
@@ -241,29 +241,29 @@ class AIOSShell:
         self.tool_handler.register("disk_operations", self.linux_handler.handle_disk_operations)
         self.tool_handler.register("user_management", self.linux_handler.handle_user_management)
 
-    def _load_plugins(self) -> None:
-        """Load plugins and register their tools."""
+    def _load_skills(self) -> None:
+        """Load skills and register their tools."""
         try:
-            loaded_plugins = self.plugin_manager.load_all()
-            if loaded_plugins:
-                self.ui.print_info(f"Loaded {len(loaded_plugins)} plugin(s)")
+            loaded_skills = self.skill_manager.load_all()
+            if loaded_skills:
+                self.ui.print_info(f"Loaded {len(loaded_skills)} skill(s)")
 
-            # Register plugin tools
-            for tool in self.plugin_manager.get_all_tools().values():
-                self._register_plugin_tool(tool)
+            # Register skill tools
+            for tool in self.skill_manager.get_all_tools().values():
+                self._register_skill_tool(tool)
 
         except Exception as e:
-            self.ui.print_warning(f"Failed to load some plugins: {e}")
+            self.ui.print_warning(f"Failed to load some skills: {e}")
 
-    def _register_plugin_tool(self, tool: ToolDefinition) -> None:
-        """Register a plugin tool with the tool handler."""
-        def plugin_tool_handler(params: Dict[str, Any]) -> ToolResult:
+    def _register_skill_tool(self, tool: ToolDefinition) -> None:
+        """Register a skill tool with the tool handler."""
+        def skill_tool_handler(params: Dict[str, Any]) -> ToolResult:
             if tool.requires_confirmation:
                 explanation = params.get("explanation", f"Running {tool.name}")
                 result = self.prompts.confirm(
                     f"Allow {tool.name}?",
                     default=True,
-                    warning=f"This plugin tool wants to: {explanation}"
+                    warning=f"This skill tool wants to: {explanation}"
                 )
                 if result != ConfirmationResult.YES:
                     return ToolResult(
@@ -292,14 +292,14 @@ class AIOSShell:
                     success=False,
                     output="",
                     error=str(e),
-                    user_friendly_message=f"Plugin tool failed: {e}"
+                    user_friendly_message=f"Skill tool failed: {e}"
                 )
 
         self.tool_handler.register_tool(
             name=tool.name,
             description=tool.description,
             input_schema=tool.input_schema,
-            handler=plugin_tool_handler,
+            handler=skill_tool_handler,
             requires_confirmation=tool.requires_confirmation
         )
 
@@ -361,25 +361,25 @@ class AIOSShell:
             # Graceful degradation for tab completion
             return []
 
-    def _notify_plugins_session_start(self) -> None:
-        """Notify all plugins that a session has started."""
-        for plugin_meta in self.plugin_manager.list_plugins():
+    def _notify_skills_session_start(self) -> None:
+        """Notify all skills that a session has started."""
+        for skill_meta in self.skill_manager.list_skills():
             try:
-                plugin = self.plugin_manager._plugins.get(plugin_meta.name)
-                if plugin and hasattr(plugin.instance, 'on_session_start'):
-                    plugin.instance.on_session_start()
+                skill = self.skill_manager._skills.get(skill_meta.name)
+                if skill and hasattr(skill.instance, 'on_session_start'):
+                    skill.instance.on_session_start()
             except Exception as e:
-                self.ui.print_warning(f"Plugin {plugin_meta.name} session start failed: {e}")
+                self.ui.print_warning(f"Skill {skill_meta.name} session start failed: {e}")
 
-    def _notify_plugins_session_end(self) -> None:
-        """Notify all plugins that a session is ending."""
-        for plugin_meta in self.plugin_manager.list_plugins():
+    def _notify_skills_session_end(self) -> None:
+        """Notify all skills that a session is ending."""
+        for skill_meta in self.skill_manager.list_skills():
             try:
-                plugin = self.plugin_manager._plugins.get(plugin_meta.name)
-                if plugin and hasattr(plugin.instance, 'on_session_end'):
-                    plugin.instance.on_session_end()
+                skill = self.skill_manager._skills.get(skill_meta.name)
+                if skill and hasattr(skill.instance, 'on_session_end'):
+                    skill.instance.on_session_end()
             except Exception as e:
-                self.ui.print_warning(f"Plugin {plugin_meta.name} session end failed: {e}")
+                self.ui.print_warning(f"Skill {skill_meta.name} session end failed: {e}")
 
     def _check_rate_limit(self) -> bool:
         """Check rate limit before API call. Returns True if allowed."""
@@ -452,8 +452,8 @@ class AIOSShell:
             self.ui.print_system_info(summary)
             return True
 
-        if lower_input in ("plugins", "/plugins"):
-            self.display_cmds.show_plugins()
+        if lower_input in ("skills", "/skills"):
+            self.display_cmds.show_skills()
             return True
 
         if lower_input in ("recipes", "/recipes"):
@@ -632,19 +632,19 @@ class AIOSShell:
         # Start session
         self.session.start_session()
         self.running = True
-        self._notify_plugins_session_start()
+        self._notify_skills_session_start()
 
         # Show welcome
         self.ui.clear_screen()
         self.ui.print_welcome()
 
-        # Show loaded plugins info
-        plugin_count = len(self.plugin_manager.list_plugins())
-        if plugin_count > 0:
-            tool_count = len(self.plugin_manager.get_all_tools())
-            recipe_count = len(self.plugin_manager.get_all_recipes())
+        # Show loaded skills info
+        skill_count = len(self.skill_manager.list_skills())
+        if skill_count > 0:
+            tool_count = len(self.skill_manager.get_all_tools())
+            recipe_count = len(self.skill_manager.get_all_recipes())
             self.ui.print_info(
-                f"Plugins: {plugin_count} loaded, {tool_count} tools, {recipe_count} recipes available"
+                f"Skills: {skill_count} loaded, {tool_count} tools, {recipe_count} recipes available"
             )
 
         # Main loop
@@ -708,7 +708,7 @@ class AIOSShell:
 
         # Cleanup
         self.task_manager.cleanup()
-        self._notify_plugins_session_end()
+        self._notify_skills_session_end()
         self._save_session_stats()
         self.session.end_session()
         return 0

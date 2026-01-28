@@ -732,8 +732,8 @@ class ToolHandler:
         """Get all tool definitions (built-in + registered)."""
         return BUILTIN_TOOLS + self._tool_definitions
 
-    def get_plugin_tools(self) -> List[Dict[str, Any]]:
-        """Get only plugin-registered tool definitions."""
+    def get_skill_tools(self) -> List[Dict[str, Any]]:
+        """Get only skill-registered tool definitions."""
         return self._tool_definitions.copy()
 
 

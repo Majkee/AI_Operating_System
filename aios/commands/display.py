@@ -1,13 +1,13 @@
 """
 Display commands for AIOS.
 
-Handles plugins, recipes, tools, credentials, and stats display.
+Handles skills, recipes, tools, credentials, and stats display.
 """
 
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..plugins import PluginManager
+    from ..skills import SkillManager
     from ..cache import SystemInfoCache, ToolResultCache
     from ..ratelimit import APIRateLimiter
     from ..ui.terminal import TerminalUI
@@ -20,44 +20,44 @@ class DisplayCommands:
     def __init__(
         self,
         ui: "TerminalUI",
-        plugin_manager: "PluginManager",
+        skill_manager: "SkillManager",
         rate_limiter: "APIRateLimiter",
         system_cache: "SystemInfoCache",
         tool_cache: "ToolResultCache",
     ):
         self.ui = ui
-        self.plugin_manager = plugin_manager
+        self.skill_manager = skill_manager
         self.rate_limiter = rate_limiter
         self.system_cache = system_cache
         self.tool_cache = tool_cache
 
-    def show_plugins(self) -> None:
-        """Display loaded plugins."""
-        plugins = self.plugin_manager.list_plugins()
+    def show_skills(self) -> None:
+        """Display loaded skills."""
+        skills = self.skill_manager.list_skills()
 
-        if not plugins:
-            self.ui.print_info("No plugins loaded.")
-            self.ui.print_info("Place plugins in ~/.config/aios/plugins/")
+        if not skills:
+            self.ui.print_info("No skills loaded.")
+            self.ui.print_info("Place skills in ~/.config/aios/skills/")
             return
 
-        self.ui.console.print("\n[bold cyan]Loaded Plugins[/bold cyan]\n")
+        self.ui.console.print("\n[bold cyan]Loaded Skills[/bold cyan]\n")
 
-        for plugin in plugins:
-            tools = self.plugin_manager.get_all_tools()
-            plugin_tools = [t for t in tools.values()
-                          if hasattr(t, 'category') and t.category == plugin.name]
-            tool_count = len(plugin_tools)
+        for skill in skills:
+            tools = self.skill_manager.get_all_tools()
+            skill_tools = [t for t in tools.values()
+                          if hasattr(t, 'category') and t.category == skill.name]
+            tool_count = len(skill_tools)
 
             self.ui.console.print(
-                f"  [green]●[/green] [bold]{plugin.name}[/bold] v{plugin.version}"
+                f"  [green]●[/green] [bold]{skill.name}[/bold] v{skill.version}"
             )
-            self.ui.console.print(f"    {plugin.description}")
-            self.ui.console.print(f"    [dim]Tools: {tool_count} | Author: {plugin.author}[/dim]")
+            self.ui.console.print(f"    {skill.description}")
+            self.ui.console.print(f"    [dim]Tools: {tool_count} | Author: {skill.author}[/dim]")
             self.ui.console.print()
 
     def show_recipes(self) -> None:
         """Display available recipes."""
-        recipes = self.plugin_manager.get_all_recipes()
+        recipes = self.skill_manager.get_all_recipes()
 
         if not recipes:
             self.ui.print_info("No recipes available.")
@@ -80,19 +80,19 @@ class DisplayCommands:
         # Get built-in tools
         builtin_tools = tool_handler.get_tool_names()
 
-        # Get plugin tools
-        plugin_tools = self.plugin_manager.get_all_tools()
+        # Get skill tools
+        skill_tools = self.skill_manager.get_all_tools()
 
         self.ui.console.print("\n[bold cyan]Available Tools[/bold cyan]\n")
 
         self.ui.console.print("[bold]Built-in Tools:[/bold]")
         for tool_name in sorted(builtin_tools):
-            if tool_name not in plugin_tools:
+            if tool_name not in skill_tools:
                 self.ui.console.print(f"  [dim]●[/dim] {tool_name}")
 
-        if plugin_tools:
-            self.ui.console.print("\n[bold]Plugin Tools:[/bold]")
-            for name, tool in sorted(plugin_tools.items()):
+        if skill_tools:
+            self.ui.console.print("\n[bold]Skill Tools:[/bold]")
+            for name, tool in sorted(skill_tools.items()):
                 confirm = "[yellow]⚠[/yellow]" if tool.requires_confirmation else "[dim]●[/dim]"
                 self.ui.console.print(f"  {confirm} {name}")
                 self.ui.console.print(f"      [dim]{tool.description[:60]}...[/dim]")
@@ -108,12 +108,12 @@ class DisplayCommands:
         except (OSError, IOError, ValueError, KeyError, RuntimeError):
             # Credential store may not be initialized or accessible
             self.ui.print_info("Credential store not initialized.")
-            self.ui.print_info("Credentials will be requested when needed by plugins.")
+            self.ui.print_info("Credentials will be requested when needed by skills.")
             return
 
         if not creds:
             self.ui.print_info("No stored credentials.")
-            self.ui.print_info("Credentials will be requested when needed by plugins.")
+            self.ui.print_info("Credentials will be requested when needed by skills.")
             return
 
         self.ui.console.print("\n[bold cyan]Stored Credentials[/bold cyan]\n")
@@ -212,12 +212,12 @@ class DisplayCommands:
         if not has_cache_stats:
             self.ui.console.print("  [dim]No cache activity yet[/dim]")
 
-        # Plugin stats
-        plugins = self.plugin_manager.list_plugins()
-        tools = self.plugin_manager.get_all_tools()
-        recipes = self.plugin_manager.get_all_recipes()
-        self.ui.console.print("\n[bold]Plugins:[/bold]")
-        self.ui.console.print(f"  Loaded: {len(plugins)}")
+        # Skill stats
+        skills = self.skill_manager.list_skills()
+        tools = self.skill_manager.get_all_tools()
+        recipes = self.skill_manager.get_all_recipes()
+        self.ui.console.print("\n[bold]Skills:[/bold]")
+        self.ui.console.print(f"  Loaded: {len(skills)}")
         self.ui.console.print(f"  Tools: {len(tools)}")
         self.ui.console.print(f"  Recipes: {len(recipes)}")
 

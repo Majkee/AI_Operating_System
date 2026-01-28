@@ -691,7 +691,7 @@ class TestSafeExpressionEvaluator:
 
     def test_simple_equality(self):
         """Test simple equality comparison."""
-        from aios.plugins import safe_eval_condition
+        from aios.skills import safe_eval_condition
 
         context = {"status": "success", "count": 5}
 
@@ -701,7 +701,7 @@ class TestSafeExpressionEvaluator:
 
     def test_numeric_comparisons(self):
         """Test numeric comparison operators."""
-        from aios.plugins import safe_eval_condition
+        from aios.skills import safe_eval_condition
 
         context = {"value": 10}
 
@@ -713,7 +713,7 @@ class TestSafeExpressionEvaluator:
 
     def test_boolean_operators(self):
         """Test boolean operators (and, or, not)."""
-        from aios.plugins import safe_eval_condition
+        from aios.skills import safe_eval_condition
 
         context = {"a": True, "b": False, "x": 5}
 
@@ -724,7 +724,7 @@ class TestSafeExpressionEvaluator:
 
     def test_membership_operators(self):
         """Test 'in' and 'not in' operators."""
-        from aios.plugins import safe_eval_condition
+        from aios.skills import safe_eval_condition
 
         context = {"status": "success", "items": [1, 2, 3]}
 
@@ -734,7 +734,7 @@ class TestSafeExpressionEvaluator:
 
     def test_forbidden_import_rejected(self):
         """Test that import attempts are rejected."""
-        from aios.plugins import safe_eval_condition, SafeExpressionError
+        from aios.skills import safe_eval_condition, SafeExpressionError
 
         context = {}
 
@@ -744,7 +744,7 @@ class TestSafeExpressionEvaluator:
 
     def test_forbidden_eval_rejected(self):
         """Test that eval/exec attempts are rejected."""
-        from aios.plugins import safe_eval_condition, SafeExpressionError
+        from aios.skills import safe_eval_condition, SafeExpressionError
 
         context = {}
 
@@ -756,7 +756,7 @@ class TestSafeExpressionEvaluator:
 
     def test_forbidden_dunder_rejected(self):
         """Test that __dunder__ access is rejected."""
-        from aios.plugins import safe_eval_condition, SafeExpressionError
+        from aios.skills import safe_eval_condition, SafeExpressionError
 
         context = {}
 
@@ -765,7 +765,7 @@ class TestSafeExpressionEvaluator:
 
     def test_function_calls_rejected(self):
         """Test that function calls are rejected."""
-        from aios.plugins import safe_eval_condition, SafeExpressionError
+        from aios.skills import safe_eval_condition, SafeExpressionError
 
         context = {"value": "test"}
 
@@ -774,7 +774,7 @@ class TestSafeExpressionEvaluator:
 
     def test_arbitrary_variable_rejected(self):
         """Test that only 'context' variable is allowed."""
-        from aios.plugins import safe_eval_condition, SafeExpressionError
+        from aios.skills import safe_eval_condition, SafeExpressionError
 
         context = {}
 
@@ -790,7 +790,7 @@ class TestSafeExpressionEvaluator:
 
     def test_missing_key_returns_none(self):
         """Test that missing keys return None (falsy)."""
-        from aios.plugins import safe_eval_condition
+        from aios.skills import safe_eval_condition
 
         context = {}
 
@@ -800,7 +800,7 @@ class TestSafeExpressionEvaluator:
 
     def test_invalid_syntax_rejected(self):
         """Test that invalid syntax raises error."""
-        from aios.plugins import safe_eval_condition, SafeExpressionError
+        from aios.skills import safe_eval_condition, SafeExpressionError
 
         context = {}
 

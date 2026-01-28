@@ -1,9 +1,9 @@
 """
-Plugin system for AIOS.
+Skill system for AIOS.
 
 Provides:
-- Plugin discovery and loading
-- Plugin lifecycle management
+- Skill discovery and loading
+- Skill lifecycle management
 - Custom tool registration
 - Recipe/workflow system
 """
@@ -311,8 +311,8 @@ class Recipe:
 
 
 @dataclass
-class PluginMetadata:
-    """Metadata about a plugin."""
+class SkillMetadata:
+    """Metadata about a skill."""
     name: str
     version: str
     description: str
@@ -323,11 +323,15 @@ class PluginMetadata:
     min_aios_version: str = "0.1.0"
 
 
-class PluginBase(ABC):
-    """
-    Base class for AIOS plugins.
+# Backwards compatibility alias
+PluginMetadata = SkillMetadata
 
-    Plugins can:
+
+class SkillBase(ABC):
+    """
+    Base class for AIOS skills.
+
+    Skills can:
     - Register custom tools
     - Define recipes/workflows
     - Hook into AIOS events
@@ -335,13 +339,13 @@ class PluginBase(ABC):
 
     @property
     @abstractmethod
-    def metadata(self) -> PluginMetadata:
-        """Return plugin metadata."""
+    def metadata(self) -> SkillMetadata:
+        """Return skill metadata."""
         pass
 
     def get_tools(self) -> List[ToolDefinition]:
         """
-        Return list of tools provided by this plugin.
+        Return list of tools provided by this skill.
 
         Override this method to register custom tools.
         """
@@ -349,18 +353,18 @@ class PluginBase(ABC):
 
     def get_recipes(self) -> List[Recipe]:
         """
-        Return list of recipes provided by this plugin.
+        Return list of recipes provided by this skill.
 
         Override this method to register workflows.
         """
         return []
 
     def on_load(self) -> None:
-        """Called when plugin is loaded."""
+        """Called when skill is loaded."""
         pass
 
     def on_unload(self) -> None:
-        """Called when plugin is unloaded."""
+        """Called when skill is unloaded."""
         pass
 
     def on_session_start(self) -> None:
@@ -372,80 +376,88 @@ class PluginBase(ABC):
         pass
 
 
+# Backwards compatibility alias
+PluginBase = SkillBase
+
+
 @dataclass
-class LoadedPlugin:
-    """A loaded plugin instance."""
-    instance: PluginBase
-    metadata: PluginMetadata
+class LoadedSkill:
+    """A loaded skill instance."""
+    instance: SkillBase
+    metadata: SkillMetadata
     path: Path
     enabled: bool = True
 
 
-class PluginManager:
+# Backwards compatibility alias
+LoadedPlugin = LoadedSkill
+
+
+class SkillManager:
     """
-    Manages plugin discovery, loading, and lifecycle.
+    Manages skill discovery, loading, and lifecycle.
     """
 
-    # Default plugin directories
-    DEFAULT_PLUGIN_DIRS = [
-        Path.home() / ".config" / "aios" / "plugins",
-        Path("/etc/aios/plugins"),
+    # Default skill directories
+    DEFAULT_SKILL_DIRS = [
+        Path.home() / ".config" / "aios" / "skills",
+        Path("/etc/aios/skills"),
     ]
 
-    def __init__(self, plugin_dirs: Optional[List[Path]] = None):
+    def __init__(self, skill_dirs: Optional[List[Path]] = None):
         """
-        Initialize the plugin manager.
+        Initialize the skill manager.
 
         Args:
-            plugin_dirs: List of directories to search for plugins
+            skill_dirs: List of directories to search for skills
         """
-        self.plugin_dirs = plugin_dirs or self.DEFAULT_PLUGIN_DIRS
-        self._plugins: Dict[str, LoadedPlugin] = {}
+        self.skill_dirs = skill_dirs or self.DEFAULT_SKILL_DIRS
+        self._skills: Dict[str, LoadedSkill] = {}
         self._tools: Dict[str, ToolDefinition] = {}
         self._recipes: Dict[str, Recipe] = {}
 
-    def discover_plugins(self) -> List[Path]:
+    def discover_skills(self) -> List[Path]:
         """
-        Discover available plugins.
+        Discover available skills.
 
         Returns:
-            List of paths to plugin modules/packages
+            List of paths to skill modules/packages
         """
         discovered = []
 
-        for plugin_dir in self.plugin_dirs:
-            if not plugin_dir.exists():
+        for skill_dir in self.skill_dirs:
+            if not skill_dir.exists():
                 continue
 
             # Look for Python files
-            for py_file in plugin_dir.glob("*.py"):
+            for py_file in skill_dir.glob("*.py"):
                 if not py_file.name.startswith("_"):
                     discovered.append(py_file)
 
             # Look for packages (directories with __init__.py)
-            for subdir in plugin_dir.iterdir():
+            for subdir in skill_dir.iterdir():
                 if subdir.is_dir() and (subdir / "__init__.py").exists():
                     discovered.append(subdir)
 
         return discovered
 
-    def load_plugin(self, path: Path) -> Optional[LoadedPlugin]:
+    def load_skill(self, path: Path) -> Optional[LoadedSkill]:
         """
-        Load a plugin from a path.
+        Load a skill from a path.
 
         Args:
-            path: Path to plugin module or package
+            path: Path to skill module or package
 
         Returns:
-            LoadedPlugin if successful, None otherwise
+            LoadedSkill if successful, None otherwise
         """
         try:
             # Determine module name
             if path.is_file():
-                module_name = f"aios_plugin_{path.stem}"
+                module_name = f"aios_skill_{path.stem}"
                 spec = importlib.util.spec_from_file_location(module_name, path)
             else:
-                module_name = f"aios_plugin_{path.name}"
+                module_name = f"aios_skill_{path.name}"
                 spec = importlib.util.spec_from_file_location(
                     module_name,
                     path / "__init__.py",
@@ -460,21 +472,22 @@ class PluginManager:
             sys.modules[module_name] = module
             spec.loader.exec_module(module)
 
-            # Find plugin class
-            plugin_class = None
+            # Find skill class
+            skill_class = None
             for attr_name in dir(module):
                 attr = getattr(module, attr_name)
                 if (isinstance(attr, type) and
-                    issubclass(attr, PluginBase) and
-                    attr is not PluginBase):
-                    plugin_class = attr
+                    issubclass(attr, SkillBase) and
+                    attr is not SkillBase and
+                    attr is not PluginBase):  # Also check alias
+                    skill_class = attr
                     break
 
-            if plugin_class is None:
+            if skill_class is None:
                 return None
 
-            # Instantiate plugin
-            instance = plugin_class()
+            # Instantiate skill
+            instance = skill_class()
             metadata = instance.metadata
 
             # Call on_load hook
@@ -487,94 +500,123 @@ class PluginManager:
             for recipe in instance.get_recipes():
                 self._recipes[recipe.name] = recipe
 
-            loaded = LoadedPlugin(
+            loaded = LoadedSkill(
                 instance=instance,
                 metadata=metadata,
                 path=path,
                 enabled=True
             )
 
-            self._plugins[metadata.name] = loaded
+            self._skills[metadata.name] = loaded
             return loaded
 
         except Exception as e:
             # Log error but don't crash
-            print(f"Failed to load plugin from {path}: {e}")
+            print(f"Failed to load skill from {path}: {e}")
             return None
 
-    def load_all(self) -> List[LoadedPlugin]:
+    def load_all(self) -> List[LoadedSkill]:
         """
-        Discover and load all plugins.
+        Discover and load all skills.
 
         Returns:
-            List of successfully loaded plugins
+            List of successfully loaded skills
         """
         loaded = []
-        for path in self.discover_plugins():
-            plugin = self.load_plugin(path)
-            if plugin:
-                loaded.append(plugin)
+        for path in self.discover_skills():
+            skill = self.load_skill(path)
+            if skill:
+                loaded.append(skill)
         return loaded
 
-    def unload_plugin(self, name: str) -> bool:
+    def unload_skill(self, name: str) -> bool:
         """
-        Unload a plugin by name.
+        Unload a skill by name.
 
         Args:
-            name: Plugin name
+            name: Skill name
 
         Returns:
             True if unloaded, False if not found
         """
-        if name not in self._plugins:
+        if name not in self._skills:
             return False
 
-        plugin = self._plugins[name]
+        skill = self._skills[name]
 
         # Call on_unload hook
-        plugin.instance.on_unload()
+        skill.instance.on_unload()
 
         # Remove tools and recipes
-        for tool in plugin.instance.get_tools():
+        for tool in skill.instance.get_tools():
             self._tools.pop(tool.name, None)
 
-        for recipe in plugin.instance.get_recipes():
+        for recipe in skill.instance.get_recipes():
             self._recipes.pop(recipe.name, None)
 
-        del self._plugins[name]
+        del self._skills[name]
         return True
 
-    def enable_plugin(self, name: str) -> bool:
-        """Enable a loaded plugin."""
-        if name in self._plugins:
-            self._plugins[name].enabled = True
+    def enable_skill(self, name: str) -> bool:
+        """Enable a loaded skill."""
+        if name in self._skills:
+            self._skills[name].enabled = True
             return True
         return False
+
+    def disable_skill(self, name: str) -> bool:
+        """Disable a loaded skill."""
+        if name in self._skills:
+            self._skills[name].enabled = False
+            return True
+        return False
+
+    def get_skill(self, name: str) -> Optional[LoadedSkill]:
+        """Get a loaded skill by name."""
+        return self._skills.get(name)
+
+    def list_skills(self) -> List[SkillMetadata]:
+        """List all loaded skills."""
+        return [s.metadata for s in self._skills.values()]
+
+    # Backwards compatibility aliases
+    def discover_plugins(self) -> List[Path]:
+        """Alias for discover_skills (backwards compatibility)."""
+        return self.discover_skills()
+
+    def load_plugin(self, path: Path) -> Optional[LoadedSkill]:
+        """Alias for load_skill (backwards compatibility)."""
+        return self.load_skill(path)
+
+    def unload_plugin(self, name: str) -> bool:
+        """Alias for unload_skill (backwards compatibility)."""
+        return self.unload_skill(name)
+
+    def enable_plugin(self, name: str) -> bool:
+        """Alias for enable_skill (backwards compatibility)."""
+        return self.enable_skill(name)
 
     def disable_plugin(self, name: str) -> bool:
-        """Disable a loaded plugin."""
-        if name in self._plugins:
-            self._plugins[name].enabled = False
-            return True
-        return False
+        """Alias for disable_skill (backwards compatibility)."""
+        return self.disable_skill(name)
 
-    def get_plugin(self, name: str) -> Optional[LoadedPlugin]:
-        """Get a loaded plugin by name."""
-        return self._plugins.get(name)
+    def get_plugin(self, name: str) -> Optional[LoadedSkill]:
+        """Alias for get_skill (backwards compatibility)."""
+        return self.get_skill(name)
 
-    def list_plugins(self) -> List[PluginMetadata]:
-        """List all loaded plugins."""
-        return [p.metadata for p in self._plugins.values()]
+    def list_plugins(self) -> List[SkillMetadata]:
+        """Alias for list_skills (backwards compatibility)."""
+        return self.list_skills()
 
     def get_all_tools(self) -> Dict[str, ToolDefinition]:
-        """Get all registered tools from plugins."""
+        """Get all registered tools from skills."""
         return {
             name: tool for name, tool in self._tools.items()
             if self._is_tool_enabled(name)
         }
 
     def get_all_recipes(self) -> Dict[str, Recipe]:
-        """Get all registered recipes from plugins."""
+        """Get all registered recipes from skills."""
         return dict(self._recipes)
 
     def find_matching_recipe(self, user_input: str) -> Optional[Recipe]:
@@ -593,24 +635,28 @@ class PluginManager:
         return None
 
     def _is_tool_enabled(self, tool_name: str) -> bool:
-        """Check if a tool's plugin is enabled."""
-        for plugin in self._plugins.values():
-            for tool in plugin.instance.get_tools():
+        """Check if a tool's skill is enabled."""
+        for skill in self._skills.values():
+            for tool in skill.instance.get_tools():
                 if tool.name == tool_name:
-                    return plugin.enabled
+                    return skill.enabled
         return True
 
     def session_started(self) -> None:
-        """Notify all plugins that a session has started."""
-        for plugin in self._plugins.values():
-            if plugin.enabled:
-                plugin.instance.on_session_start()
+        """Notify all skills that a session has started."""
+        for skill in self._skills.values():
+            if skill.enabled:
+                skill.instance.on_session_start()
 
     def session_ended(self) -> None:
-        """Notify all plugins that a session has ended."""
-        for plugin in self._plugins.values():
-            if plugin.enabled:
-                plugin.instance.on_session_end()
+        """Notify all skills that a session has ended."""
+        for skill in self._skills.values():
+            if skill.enabled:
+                skill.instance.on_session_end()
+
+
+# Backwards compatibility alias
+PluginManager = SkillManager
 
 
 class RecipeExecutor:
@@ -1228,38 +1274,42 @@ BUILTIN_RECIPES = [
 ]
 
 
-# Global plugin manager instance
-_plugin_manager: Optional[PluginManager] = None
+# Global skill manager instance
+_skill_manager: Optional[SkillManager] = None
 
 
-def get_plugin_manager() -> PluginManager:
-    """Get the global plugin manager instance."""
-    global _plugin_manager
-    if _plugin_manager is None:
-        _plugin_manager = PluginManager()
+def get_skill_manager() -> SkillManager:
+    """Get the global skill manager instance."""
+    global _skill_manager
+    if _skill_manager is None:
+        _skill_manager = SkillManager()
         # Register built-in recipes
         for recipe in BUILTIN_RECIPES:
-            _plugin_manager._recipes[recipe.name] = recipe
-    return _plugin_manager
+            _skill_manager._recipes[recipe.name] = recipe
+    return _skill_manager
 
 
-def create_simple_plugin(
+# Backwards compatibility alias
+get_plugin_manager = get_skill_manager
+
+
+def create_simple_skill(
     name: str,
     version: str,
     description: str,
     tools: Optional[List[ToolDefinition]] = None,
     recipes: Optional[List[Recipe]] = None
-) -> Type[PluginBase]:
+) -> Type[SkillBase]:
     """
-    Factory function to create a simple plugin class.
+    Factory function to create a simple skill class.
 
-    Useful for quick plugin creation without subclassing.
+    Useful for quick skill creation without subclassing.
 
     Example:
-        MyPlugin = create_simple_plugin(
-            name="my-plugin",
+        MySkill = create_simple_skill(
+            name="my-skill",
             version="1.0.0",
-            description="My custom plugin",
+            description="My custom skill",
             tools=[
                 ToolDefinition(
                     name="my_tool",
@@ -1273,10 +1323,10 @@ def create_simple_plugin(
     _tools = tools or []
     _recipes = recipes or []
 
-    class SimplePlugin(PluginBase):
+    class SimpleSkill(SkillBase):
         @property
-        def metadata(self) -> PluginMetadata:
-            return PluginMetadata(
+        def metadata(self) -> SkillMetadata:
+            return SkillMetadata(
                 name=name,
                 version=version,
                 description=description,
@@ -1289,4 +1339,13 @@ def create_simple_plugin(
         def get_recipes(self) -> List[Recipe]:
             return _recipes
 
-    return SimplePlugin
+    return SimpleSkill
+
+
+# Backwards compatibility aliases
+PluginManager = SkillManager
+PluginMetadata = SkillMetadata
+PluginBase = SkillBase
+LoadedPlugin = LoadedSkill
+get_plugin_manager = get_skill_manager
+create_simple_plugin = create_simple_skill
