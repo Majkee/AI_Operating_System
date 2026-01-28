@@ -4,7 +4,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/aiosys.svg)](https://pypi.org/project/aiosys/)
 [![Docker Hub](https://img.shields.io/docker/v/majkee/aios?label=docker%20hub)](https://hub.docker.com/r/majkee/aios)
-[![Tests](https://img.shields.io/badge/tests-414%20passed-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-454%20passed-brightgreen.svg)](#testing)
 [![Code style: PEP8](https://img.shields.io/badge/code%20style-pep8-green.svg)](https://www.python.org/dev/peps/pep-0008/)
 
 **Talk to your Linux system in plain English.** AIOS is a natural language interface powered by Claude that makes Linux accessible to everyone -- no command line experience required.
@@ -199,6 +199,16 @@ Real-time response streaming for a modern chat experience:
 - **Configurable**: Disable via `config` menu or config file
 - **No latency penalty**: Same API, better UX
 
+### Context Window Management
+
+Automatic conversation history management prevents token limit crashes:
+
+- **Token budget tracking**: Monitors context usage as percentage of budget
+- **Automatic summarization**: When nearing limit, older messages are summarized
+- **Summary preservation**: Key details from earlier conversation retained
+- **Configurable budget**: Adjust `context_budget` for different needs
+- **Graceful fallback**: Falls back to truncation if summarization fails
+
 ### Beautiful Interface
 
 - Rich, colorful terminal output with syntax highlighting
@@ -342,6 +352,9 @@ api_key = ""                    # Anthropic API key (prefer env var)
 model = "claude-sonnet-4-5-20250929"     # Model to use
 max_tokens = 4096               # Max response tokens
 streaming = true                # Stream responses word-by-word
+context_budget = 150000         # Max tokens for conversation history
+summarize_threshold = 0.75      # Summarize at 75% of context budget (0.5-0.95)
+min_recent_messages = 6         # Keep this many recent messages verbatim (2-20)
 
 [safety]
 require_confirmation = true     # Confirm dangerous actions
@@ -375,7 +388,7 @@ auto_detect_sensitivity = "moderate"  # high, moderate, low
 
 ## Testing
 
-AIOS has a comprehensive test suite with 414 tests covering all major systems.
+AIOS has a comprehensive test suite with 454 tests covering all major systems.
 
 ```bash
 # Install test dependencies
@@ -412,6 +425,7 @@ pytest tests/test_ratelimit.py -v
 | Background Tasks | 33 |
 | Tab Completions | 27 |
 | Streaming | 16 |
+| Context Window | 30 |
 
 CI runs automatically on every push and PR. See [CI.md](CI.md) for details.
 
@@ -499,6 +513,7 @@ AIOS takes security seriously. See [SECURITY.md](SECURITY.md) for:
 - [x] Claude Code interactive integration with auth chooser
 - [x] Streaming responses with real-time Markdown rendering
 - [x] Interactive configuration menu
+- [x] Context window management with automatic summarization
 - [ ] Web-based interface option
 - [ ] Multi-language support
 - [ ] Voice input integration

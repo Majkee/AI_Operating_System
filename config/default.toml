@@ -15,6 +15,10 @@ max_tokens = 4096
 # Stream responses word-by-word (disable for debugging or slow terminals)
 streaming = true
 
+# Max tokens for conversation history before summarization (default 150000)
+# Reduce for lower memory usage, increase for longer conversations
+context_budget = 150000
+
 [safety]
 # Require confirmation for potentially dangerous commands
 require_confirmation = true

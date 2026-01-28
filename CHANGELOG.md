@@ -5,6 +5,54 @@ All notable changes to AIOS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.10] - 2026-01-28
+
+### Added
+
+#### Context Window Management
+- Automatic conversation history management to prevent token limit crashes
+- `estimate_tokens()`, `estimate_message_tokens()`, `estimate_history_tokens()` — token counting functions using character-based heuristic (4 chars ≈ 1 token)
+- `_get_context_usage()` — returns current token count and percentage of budget
+- `_needs_summarization()` — checks if context exceeds threshold (configurable, default 75% of budget)
+- `_summarize_history()` — uses Claude to create concise summary of older messages, keeps recent messages verbatim
+- `_maybe_manage_context()` — called before each API request to trigger summarization if needed
+- `_conversation_summary` field — stores summary of older conversation
+- `_summarized_message_count` — tracks how many messages have been summarized
+- `get_context_stats()` — returns detailed context window statistics including all config values
+- Summary included in system prompt as "Earlier Conversation Summary" section
+
+#### Configurable Summarization Settings
+- `context_budget` config option under `[api]` section (default: 150000 tokens)
+- `summarize_threshold` config option (default: 0.75) — trigger summarization at this percentage of budget (0.5-0.95)
+- `min_recent_messages` config option (default: 6) — always keep this many recent messages verbatim (2-20)
+- Interactive config menu includes all three settings with dropdown selections
+- Settings available via `config` command: context budget (free input), summarize threshold (50%-90% dropdown), min recent messages (2-20 dropdown)
+
+#### Constants (Defaults)
+- `DEFAULT_CONTEXT_BUDGET = 150000` — conservative limit leaving room for response
+- `SUMMARIZE_THRESHOLD = 0.75` — trigger summarization at 75% of budget
+- `MIN_RECENT_MESSAGES = 6` — always keep at least 6 recent messages verbatim
+- `CHARS_PER_TOKEN = 4` — estimation ratio for English text
+
+#### Tests
+- 30 tests in `tests/test_context_window.py`:
+  - `TestTokenEstimation` (9): empty/short/long text, string/text-block/tool-use/tool-result messages, empty/multiple history
+  - `TestContextWindowManagement` (7): initialization, default thresholds fallback, get_context_usage, needs_summarization true/false, clear_history, get_context_stats
+  - `TestSummarization` (5): format_messages, keeps_recent_messages, sets_summary, handles_failure, skipped_when_few
+  - `TestSystemPromptWithSummary` (2): includes/excludes summary
+  - `TestConfigDefaults` (6): has context_budget/custom, has summarize_threshold/custom, has min_recent_messages/custom
+  - `TestContextStatsIncludesConfig` (1): stats include min_recent_messages
+
+### Changed
+- `aios/claude/client.py` — added logging import; added token estimation functions and constants; `ClaudeClient.__init__` initializes context management fields from config; `_build_system_prompt()` includes conversation summary; `send_message()` and `send_tool_results()` call `_maybe_manage_context()`; `clear_history()` also clears summary; `get_history_summary()` includes context stats; `_summarize_history()` uses `self.min_recent_messages` from config
+- `aios/config.py` — `APIConfig` gains `context_budget: int = 150000`, `summarize_threshold: float = 0.75`, `min_recent_messages: int = 6` fields
+- `aios/data/default.toml` — added `context_budget`, `summarize_threshold`, `min_recent_messages` under `[api]`
+- `aios/shell.py` — interactive config menu includes context_budget (int), summarize_threshold (choice dropdown), min_recent_messages (choice dropdown)
+- `tests/test_streaming.py` — updated mocks to include all new config fields
+- `README.md` — updated config reference with new summarization options, test count updated to 454
+
+---
+
 ## [0.7.0] - 2026-01-28
 
 ### Added

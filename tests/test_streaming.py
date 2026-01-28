@@ -16,6 +16,7 @@ class TestClaudeClientHelpers:
         with patch.object(ClaudeClient, '__init__', lambda x, y=None: None):
             client = ClaudeClient()
             client.tool_handler = Mock()
+            client._conversation_summary = None  # Required for new context management
             result = client._build_system_prompt()
             assert result == SYSTEM_PROMPT
 
@@ -24,6 +25,7 @@ class TestClaudeClientHelpers:
         with patch.object(ClaudeClient, '__init__', lambda x, y=None: None):
             client = ClaudeClient()
             client.tool_handler = Mock()
+            client._conversation_summary = None  # Required for new context management
             context = "User is on Debian 12"
             result = client._build_system_prompt(context)
             assert SYSTEM_PROMPT in result
@@ -214,6 +216,9 @@ class TestSendMessageStreaming:
         mock_config.api.api_key = "test-key"
         mock_config.api.model = "claude-test"
         mock_config.api.max_tokens = 1000
+        mock_config.api.context_budget = 150000
+        mock_config.api.summarize_threshold = 0.75
+        mock_config.api.min_recent_messages = 6
         mock_get_config.return_value = mock_config
 
         mock_client = Mock()
@@ -238,6 +243,9 @@ class TestSendMessageStreaming:
         mock_config.api.api_key = "test-key"
         mock_config.api.model = "claude-test"
         mock_config.api.max_tokens = 1000
+        mock_config.api.context_budget = 150000
+        mock_config.api.summarize_threshold = 0.75
+        mock_config.api.min_recent_messages = 6
         mock_get_config.return_value = mock_config
 
         mock_client = Mock()
@@ -279,6 +287,9 @@ class TestSendToolResultsStreaming:
         mock_config.api.api_key = "test-key"
         mock_config.api.model = "claude-test"
         mock_config.api.max_tokens = 1000
+        mock_config.api.context_budget = 150000
+        mock_config.api.summarize_threshold = 0.75
+        mock_config.api.min_recent_messages = 6
         mock_get_config.return_value = mock_config
 
         mock_client = Mock()
@@ -304,6 +315,9 @@ class TestSendToolResultsStreaming:
         mock_config.api.api_key = "test-key"
         mock_config.api.model = "claude-test"
         mock_config.api.max_tokens = 1000
+        mock_config.api.context_budget = 150000
+        mock_config.api.summarize_threshold = 0.75
+        mock_config.api.min_recent_messages = 6
         mock_get_config.return_value = mock_config
 
         mock_client = Mock()

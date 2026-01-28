@@ -26,6 +26,15 @@ class APIConfig(BaseModel):
     model: str = Field(default="claude-sonnet-4-5-20250929", description="Model to use")
     max_tokens: int = Field(default=4096, description="Max tokens per response")
     streaming: bool = Field(default=True, description="Stream responses word-by-word")
+    context_budget: int = Field(default=150000, description="Max tokens for conversation history")
+    summarize_threshold: float = Field(
+        default=0.75,
+        description="Trigger summarization at this percentage of context budget (0.5-0.95)"
+    )
+    min_recent_messages: int = Field(
+        default=6,
+        description="Always keep at least this many recent messages (2-20)"
+    )
 
 
 class SafetyConfig(BaseModel):

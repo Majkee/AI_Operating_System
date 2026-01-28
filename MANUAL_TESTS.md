@@ -1,4 +1,4 @@
-# AIOS v0.6.0 Manual Test Checklist
+# AIOS v0.8.10 Manual Test Checklist
 
 Run these tests to verify all features work end-to-end.
 Mark each test with `[x]` when passed or `[!]` if failed.
@@ -52,6 +52,12 @@ aios
 - [ ] **1.14** Type `model` or `/model` -- should display a table of available models with current selection marked
 - [ ] **1.15** Type `model 1` -- should change model to the first option and confirm with success message
 - [ ] **1.16** Type `model invalid-name` -- should show "Invalid model" error
+
+### Config Commands
+
+- [ ] **1.17** Type `config` or `/config` -- should open interactive configuration menu with numbered settings table
+- [ ] **1.18** Enter `0` or press Enter with no input -- should exit config menu
+- [ ] **1.19** Enter an invalid number (e.g. `99`) -- should show "Invalid selection" error
 
 ---
 
@@ -409,11 +415,91 @@ The Docker image includes it; for local testing, install it first.
 
 ---
 
-## 13. Docker-Specific Tests
+## 13. Streaming Responses
 
-- [ ] **13.1** Container starts without errors: `docker compose up -d && docker compose logs`
-- [ ] **13.2** Version check: `docker compose exec aios python3 -c "import aios; print(aios.__version__)"` -- should print "0.6.0"
-- [ ] **13.3** All imports work:
+### Basic Streaming
+
+- [ ] **13.1** Ask "Tell me about Linux" -- response should stream word-by-word with live Markdown rendering (not appear all at once)
+- [ ] **13.2** Watch for spinner → text transition: should see "Thinking..." spinner, then "AIOS:" header, then streaming text
+- [ ] **13.3** Ask a question that triggers a tool (e.g. "Show disk usage") -- tool executes, then Claude's response streams
+
+### Streaming Config
+
+- [ ] **13.4** Type `config`, select `api.streaming`, set to OFF -- should save and confirm
+- [ ] **13.5** Ask a question -- response should appear all at once (old behavior) with spinner until complete
+- [ ] **13.6** Re-enable streaming via config -- streaming should resume
+
+---
+
+## 14. Interactive Config Menu
+
+### Menu Navigation
+
+- [ ] **14.1** Type `config` -- should show table with columns: #, Setting, Value, Description
+- [ ] **14.2** Settings should include: api.streaming, api.model, api.max_tokens, api.context_budget, api.summarize_threshold, api.min_recent_messages, ui.*, safety.*, code.*
+- [ ] **14.3** Boolean values should show ON (green) or OFF (red)
+
+### Changing Boolean Settings
+
+- [ ] **14.4** Select a boolean setting (e.g. `api.streaming`) -- should show "1. ON" and "2. OFF" options
+- [ ] **14.5** Select "1" or "2" -- should update value and show confirmation
+- [ ] **14.6** Enter "0" -- should cancel without changing
+
+### Changing Model (Dropdown)
+
+- [ ] **14.7** Select `api.model` -- should show numbered list of available models with descriptions
+- [ ] **14.8** Select a model number -- should update and show "Updated api.model to: ..."
+- [ ] **14.9** Changes should persist after restarting AIOS (check `~/.config/aios/config.toml`)
+
+### Changing Numeric Settings
+
+- [ ] **14.10** Select `api.max_tokens` -- should prompt for numeric input
+- [ ] **14.11** Enter a valid number -- should update successfully
+- [ ] **14.12** Enter invalid input (e.g. "abc") -- should show error and re-prompt or cancel
+
+### Changing Summarization Settings
+
+- [ ] **14.13** Select `api.context_budget` -- should allow entering value between 50000-200000
+- [ ] **14.14** Select `api.summarize_threshold` -- should show dropdown: 50% to 90%
+- [ ] **14.15** Select `api.min_recent_messages` -- should show dropdown: 2 to 20 messages
+
+---
+
+## 15. Context Window Management
+
+### Context Stats
+
+- [ ] **15.1** Have a conversation (5-10 messages) then type `stats` -- should show context usage in API stats
+- [ ] **15.2** Type `history` -- should show context usage percentage and active message count
+
+### Automatic Summarization
+
+- [ ] **15.3** Configure low context budget: `config` → `api.context_budget` → set to 5000 (very low for testing)
+- [ ] **15.4** Have a long conversation (10+ messages) -- should see log message about summarization triggered
+- [ ] **15.5** After summarization, `history` should show "Summarized messages: N" count
+- [ ] **15.6** Subsequent questions should still have context from summarized history (Claude remembers earlier topics)
+
+### Summary in System Prompt
+
+- [ ] **15.7** After summarization, Claude's responses should reflect knowledge from the summary
+- [ ] **15.8** Ask "What did we discuss earlier?" -- should recall topics from before summarization
+
+### Clear History
+
+- [ ] **15.9** After summarization, type `clear` then ask a question -- Claude should have no memory of previous conversation (summary also cleared)
+
+### Threshold Configuration
+
+- [ ] **15.10** Set `summarize_threshold` to 0.5 (50%) via config -- summarization should trigger earlier
+- [ ] **15.11** Set `min_recent_messages` to 2 via config -- only 2 messages should be kept verbatim after summarization
+
+---
+
+## 16. Docker-Specific Tests
+
+- [ ] **16.1** Container starts without errors: `docker compose up -d && docker compose logs`
+- [ ] **16.2** Version check: `docker compose exec aios python3 -c "import aios; print(aios.__version__)"` -- should print "0.8.10"
+- [ ] **16.3** All imports work:
   ```bash
   docker compose exec aios python3 -c "
   from aios.cache import LRUCache
@@ -427,12 +513,12 @@ The Docker image includes it; for local testing, install it first.
   print('All imports OK')
   "
   ```
-- [ ] **13.4** Config directories exist: `docker compose exec aios ls -la /home/aios/.config/aios/`
-- [ ] **13.5** Claude Code CLI is available: `docker compose exec aios which claude` -- should print a path
+- [ ] **16.4** Config directories exist: `docker compose exec aios ls -la /home/aios/.config/aios/`
+- [ ] **16.5** Claude Code CLI is available: `docker compose exec aios which claude` -- should print a path
 
 ---
 
-## 14. Automated Test Suite
+## 17. Automated Test Suite
 
 Run inside Docker or locally to confirm all automated tests pass:
 
@@ -444,9 +530,9 @@ docker compose exec aios bash -c "cd /app && pip install pytest pytest-cov pytes
 pytest tests/ -v
 ```
 
-- [ ] **14.1** All 398 tests pass
-- [ ] **14.2** No test failures or errors
-- [ ] **14.3** Skipped tests are only platform-specific (Windows vs Linux)
+- [ ] **17.1** All 454 tests pass
+- [ ] **17.2** No test failures or errors
+- [ ] **17.3** Skipped tests are only platform-specific (Windows vs Linux)
 
 ---
 
@@ -454,7 +540,7 @@ pytest tests/ -v
 
 | Category | Tests | Passed | Failed |
 |----------|-------|--------|--------|
-| Shell Commands | 16 | | |
+| Shell Commands | 19 | | |
 | Plugin System | 9 | | |
 | Caching System | 8 | | |
 | Rate Limiting | 3 | | |
@@ -466,15 +552,18 @@ pytest tests/ -v
 | Sudo, Timeouts & Streaming | 7 | | |
 | Background Tasks | 32 | | |
 | Claude Code Interactive | 31 | | |
+| Streaming Responses | 6 | | |
+| Interactive Config Menu | 15 | | |
+| Context Window Management | 11 | | |
 | Docker-Specific | 5 | | |
 | Automated Tests | 3 | | |
-| **Total** | **144** | | |
+| **Total** | **179** | | |
 
 ---
 
 **Tester**: _______________
 **Date**: _______________
-**Version**: 0.6.0
+**Version**: 0.8.10
 **Environment**: Docker / Local (circle one)
 **OS**: _______________
 **Python**: _______________
