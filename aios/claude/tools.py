@@ -678,6 +678,8 @@ class ToolHandler:
 
     def execute(self, tool_name: str, tool_input: dict[str, Any]) -> ToolResult:
         """Execute a tool and return the result."""
+        from ..stats import get_usage_stats
+
         if tool_name not in self._handlers:
             return ToolResult(
                 success=False,
@@ -692,6 +694,10 @@ class ToolHandler:
             if cached is not None:
                 return cached
 
+        # Track execution statistics
+        stats = get_usage_stats()
+        start_time = stats.record_tool_start(tool_name)
+
         try:
             handler = self._handlers[tool_name]
             result = handler(tool_input)
@@ -702,6 +708,14 @@ class ToolHandler:
                 error=str(e),
                 user_friendly_message=f"Something went wrong: {str(e)}"
             )
+
+        # Record stats
+        stats.record_tool_end(
+            tool_name,
+            start_time,
+            success=result.success,
+            error=result.error
+        )
 
         # Cache store + invalidation (no-ops for non-cacheable tools)
         if self._cache is not None:

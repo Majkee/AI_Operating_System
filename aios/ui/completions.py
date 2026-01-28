@@ -71,6 +71,12 @@ COMMAND_REGISTRY = [
         "has_arg": False,
     },
     {
+        "name": "stats all",
+        "aliases": ["/stats all"],
+        "help": "Show all-time aggregate statistics",
+        "has_arg": False,
+    },
+    {
         "name": "config",
         "aliases": ["/config"],
         "help": "Interactive settings menu",

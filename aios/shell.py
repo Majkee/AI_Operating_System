@@ -434,6 +434,7 @@ class AIOSShell:
 
         # Exit commands
         if lower_input in ("exit", "quit", "bye", "goodbye"):
+            self._save_session_stats()
             self.ui.print_info("Goodbye! See you next time.")
             return False
 
@@ -465,6 +466,10 @@ class AIOSShell:
 
         if lower_input in ("stats", "/stats"):
             self.display_cmds.show_stats()
+            return True
+
+        if lower_input in ("stats all", "/stats all"):
+            self.display_cmds.show_stats_alltime()
             return True
 
         if lower_input in ("config", "/config"):
@@ -697,11 +702,23 @@ class AIOSShell:
                 self.ui.print_info("\nUse 'exit' to quit, or Ctrl+D")
                 continue
             except EOFError:
+                self._save_session_stats()
                 self.ui.print_info("\nGoodbye!")
                 break
 
         # Cleanup
         self.task_manager.cleanup()
         self._notify_plugins_session_end()
+        self._save_session_stats()
         self.session.end_session()
         return 0
+
+    def _save_session_stats(self) -> None:
+        """Save usage statistics for the current session."""
+        try:
+            from .stats import get_usage_stats
+            stats = get_usage_stats()
+            stats.save_session_stats()
+        except Exception:
+            # Don't fail exit if stats can't be saved
+            pass

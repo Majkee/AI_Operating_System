@@ -140,11 +140,46 @@ class DisplayCommands:
 
     def show_stats(self) -> None:
         """Display session and system stats."""
+        from ..stats import get_usage_stats
+
         self.ui.console.print("\n[bold cyan]Session Statistics[/bold cyan]\n")
+
+        # Usage statistics
+        usage_stats = get_usage_stats()
+        session_summary = usage_stats.get_session_summary()
+
+        self.ui.console.print("[bold]Usage This Session:[/bold]")
+        self.ui.console.print(f"  Duration: {session_summary['duration_minutes']} minutes")
+        self.ui.console.print(f"  Tools executed: {session_summary['total_tool_executions']}")
+        self.ui.console.print(f"  Recipes executed: {session_summary['total_recipe_executions']}")
+        self.ui.console.print(f"  Errors: {session_summary['total_errors']}")
+
+        # Top tools this session
+        top_tools = usage_stats.get_top_tools(5)
+        if top_tools:
+            self.ui.console.print("\n[bold]Most Used Tools (This Session):[/bold]")
+            for tool in top_tools:
+                rate = f"{tool.success_rate:.0f}%" if tool.execution_count > 0 else "N/A"
+                avg_ms = f"{tool.avg_duration_ms:.0f}ms" if tool.execution_count > 0 else "N/A"
+                self.ui.console.print(
+                    f"  {tool.name}: {tool.execution_count}x "
+                    f"[dim](success: {rate}, avg: {avg_ms})[/dim]"
+                )
+
+        # Recipe stats this session
+        recipe_stats = usage_stats.get_all_recipe_stats()
+        if recipe_stats:
+            self.ui.console.print("\n[bold]Recipes Executed (This Session):[/bold]")
+            for name, stats in recipe_stats.items():
+                rate = f"{stats.success_rate:.0f}%" if stats.execution_count > 0 else "N/A"
+                self.ui.console.print(
+                    f"  {name}: {stats.execution_count}x "
+                    f"[dim](success: {rate}, steps: {stats.total_steps_executed})[/dim]"
+                )
 
         # Rate limiter stats
         rl_stats = self.rate_limiter.stats
-        self.ui.console.print("[bold]API Usage:[/bold]")
+        self.ui.console.print("\n[bold]API Usage:[/bold]")
         self.ui.console.print(f"  Requests this session: {rl_stats['total_requests']}")
         self.ui.console.print(f"  Tokens used: {rl_stats['total_tokens_used']}")
         self.ui.console.print(f"  Requests remaining (minute): {rl_stats.get('requests_remaining_minute', 'N/A')}")
@@ -185,5 +220,46 @@ class DisplayCommands:
         self.ui.console.print(f"  Loaded: {len(plugins)}")
         self.ui.console.print(f"  Tools: {len(tools)}")
         self.ui.console.print(f"  Recipes: {len(recipes)}")
+
+        self.ui.console.print()
+        self.ui.print_info("Use '/stats all' for all-time statistics")
+
+    def show_stats_alltime(self) -> None:
+        """Display all-time aggregate statistics."""
+        from ..stats import get_usage_stats
+
+        usage_stats = get_usage_stats()
+        aggregate = usage_stats.get_aggregate_stats()
+
+        self.ui.console.print("\n[bold cyan]All-Time Statistics[/bold cyan]\n")
+
+        self.ui.console.print("[bold]Overview:[/bold]")
+        self.ui.console.print(f"  Total sessions: {aggregate['total_sessions']}")
+        self.ui.console.print(f"  Total tool executions: {aggregate['total_tool_executions']}")
+        self.ui.console.print(f"  Total recipe executions: {aggregate['total_recipe_executions']}")
+        if aggregate['first_session']:
+            self.ui.console.print(f"  First session: {aggregate['first_session'][:10]}")
+        if aggregate['last_updated']:
+            self.ui.console.print(f"  Last updated: {aggregate['last_updated'][:19]}")
+
+        # Top tools all-time
+        top_tools = usage_stats.get_top_tools_alltime(10)
+        if top_tools:
+            self.ui.console.print("\n[bold]Most Used Tools (All-Time):[/bold]")
+            for tool in top_tools:
+                self.ui.console.print(
+                    f"  {tool['name']}: {tool['execution_count']}x "
+                    f"[dim](success: {tool['success_rate']:.0f}%)[/dim]"
+                )
+
+        # Top recipes all-time
+        top_recipes = usage_stats.get_top_recipes_alltime(10)
+        if top_recipes:
+            self.ui.console.print("\n[bold]Most Used Recipes (All-Time):[/bold]")
+            for recipe in top_recipes:
+                self.ui.console.print(
+                    f"  {recipe['name']}: {recipe['execution_count']}x "
+                    f"[dim](success: {recipe['success_rate']:.0f}%)[/dim]"
+                )
 
         self.ui.console.print()

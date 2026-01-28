@@ -5,6 +5,40 @@ All notable changes to AIOS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-01-28
+
+### Added
+
+#### Usage Statistics Tracking System
+New comprehensive statistics tracking for tools, recipes, and plugins:
+
+**Session Statistics (`/stats`):**
+- Tools executed count and success rate
+- Recipes executed with step counts
+- Average execution duration per tool
+- Most used tools this session
+- Total errors count
+- Session duration
+
+**All-Time Statistics (`/stats all`):**
+- Aggregated stats across all sessions
+- Total sessions count
+- Most used tools all-time with success rates
+- Most used recipes all-time
+- Persistent storage in `~/.config/aios/stats/`
+
+**New Classes:**
+- `UsageStatistics` - Central stats tracker
+- `ToolStats` - Per-tool statistics
+- `RecipeStats` - Per-recipe statistics
+- `PluginStats` - Per-plugin statistics
+
+**Integration Points:**
+- Tool execution tracked in `ToolHandler.execute()`
+- Recipe execution tracked in `RecipeExecutor.execute()`
+- Stats saved on session exit
+- 19 new tests in `tests/test_stats.py`
+
 ## [0.9.0] - 2026-01-28
 
 ### Added

@@ -645,9 +645,17 @@ class RecipeExecutor:
         Returns:
             Final context with all results
         """
+        from .stats import get_usage_stats
+
         self._context = initial_context or {}
         self._context["_recipe"] = recipe.name
         self._context["_results"] = []
+
+        # Track recipe execution statistics
+        stats = get_usage_stats()
+        start_time = stats.record_recipe_start(recipe.name)
+        steps_executed = 0
+        all_success = True
 
         for i, step in enumerate(recipe.steps):
             # Notify callback
@@ -668,6 +676,7 @@ class RecipeExecutor:
                         "success": False,
                         "error": f"Condition evaluation failed: {e}"
                     })
+                    all_success = False
                     continue
 
             # Execute step
@@ -675,6 +684,7 @@ class RecipeExecutor:
                 # Interpolate params with context
                 params = self._interpolate_params(step.tool_params)
                 result = self.tool_executor(step.tool_name, params)
+                steps_executed += 1
 
                 self._context["_results"].append({
                     "step": i,
@@ -691,6 +701,15 @@ class RecipeExecutor:
                     "success": False,
                     "error": str(e)
                 })
+                all_success = False
+
+        # Record recipe stats
+        stats.record_recipe_end(
+            recipe.name,
+            start_time,
+            success=all_success,
+            steps_executed=steps_executed
+        )
 
         return self._context
 

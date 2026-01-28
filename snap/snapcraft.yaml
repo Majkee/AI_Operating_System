@@ -1,5 +1,5 @@
 name: aios
-version: '0.9.0'
+version: '0.9.1'
 summary: AI-powered Operating System Interface
 description: |
   Talk to your Linux system in plain English. AIOS is a natural language
