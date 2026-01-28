@@ -41,5 +41,13 @@ parts:
       - libffi-dev
       - libssl-dev
     stage-packages:
-      - python3
+      - python3.12-minimal
+      - libpython3.12-minimal
+      - libpython3.12-stdlib
       - libffi8
+    override-prime: |
+      craftctl default
+      # Create python3 symlink if not present
+      if [ ! -f "$CRAFT_PRIME/usr/bin/python3" ]; then
+        ln -sf python3.12 "$CRAFT_PRIME/usr/bin/python3"
+      fi
