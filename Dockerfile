@@ -80,6 +80,10 @@ RUN mkdir -p /etc/aios/skills \
 # Change ownership to non-root user
 RUN chown -R aios:aios /app
 
+# Create default Ansible inventory with localhost
+RUN mkdir -p /etc/ansible \
+    && echo '[local]\nlocalhost ansible_connection=local\n\n[all:children]\nlocal' > /etc/ansible/hosts
+
 # Create config directories with proper ownership
 RUN mkdir -p /home/aios/.config/aios/history \
     /home/aios/.config/aios/skills \
