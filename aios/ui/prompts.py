@@ -40,16 +40,31 @@ class YesNoValidator(Validator):
 class ConfirmationPrompt:
     """Handles user confirmations and prompts."""
 
-    def __init__(self):
-        """Initialize the prompt handler."""
+    def __init__(self, terminal_ui=None):
+        """Initialize the prompt handler.
+
+        Args:
+            terminal_ui: Optional TerminalUI instance to pause progress during prompts.
+        """
         config = get_config()
         self.console = Console()
+        self._terminal_ui = terminal_ui
 
         # Style for prompts
         self.style = Style.from_dict({
             "prompt": "bold cyan",
             "warning": "bold yellow",
         })
+
+    def _pause_progress(self) -> None:
+        """Pause any active progress display."""
+        if self._terminal_ui is not None:
+            self._terminal_ui.pause_progress()
+
+    def _resume_progress(self) -> None:
+        """Resume any active progress display."""
+        if self._terminal_ui is not None:
+            self._terminal_ui.resume_progress()
 
     def confirm(
         self,
@@ -68,31 +83,38 @@ class ConfirmationPrompt:
         Returns:
             ConfirmationResult
         """
-        if warning:
-            self.console.print(f"[yellow]⚠ {warning}[/yellow]")
-
-        default_str = "Y/n" if default else "y/N"
-        prompt_text = f"{message} [{default_str}]: "
+        # Pause any active progress display so prompt is visible
+        self._pause_progress()
 
         try:
-            response = prompt(
-                prompt_text,
-                validator=YesNoValidator(),
-                validate_while_typing=False
-            ).lower().strip()
+            if warning:
+                self.console.print(f"[yellow]⚠ {warning}[/yellow]")
 
-            if not response:
-                return ConfirmationResult.YES if default else ConfirmationResult.NO
-            elif response in ("y", "yes"):
-                return ConfirmationResult.YES
-            else:
-                return ConfirmationResult.NO
+            default_str = "Y/n" if default else "y/N"
+            prompt_text = f"{message} [{default_str}]: "
 
-        except KeyboardInterrupt:
-            self.console.print("\n[dim]Cancelled[/dim]")
-            return ConfirmationResult.CANCELLED
-        except EOFError:
-            return ConfirmationResult.CANCELLED
+            try:
+                response = prompt(
+                    prompt_text,
+                    validator=YesNoValidator(),
+                    validate_while_typing=False
+                ).lower().strip()
+
+                if not response:
+                    return ConfirmationResult.YES if default else ConfirmationResult.NO
+                elif response in ("y", "yes"):
+                    return ConfirmationResult.YES
+                else:
+                    return ConfirmationResult.NO
+
+            except KeyboardInterrupt:
+                self.console.print("\n[dim]Cancelled[/dim]")
+                return ConfirmationResult.CANCELLED
+            except EOFError:
+                return ConfirmationResult.CANCELLED
+        finally:
+            # Resume progress display
+            self._resume_progress()
 
     def confirm_dangerous_action(
         self,
@@ -111,6 +133,9 @@ class ConfirmationPrompt:
         Returns:
             ConfirmationResult
         """
+        # Pause any active progress display so prompt is visible
+        self._pause_progress()
+
         self.console.print()
         self.console.print(f"[bold yellow]⚠ Warning[/bold yellow]")
         self.console.print(f"[bold]{action}[/bold]")
@@ -121,6 +146,7 @@ class ConfirmationPrompt:
 
         self.console.print()
 
+        # Note: confirm() will handle resume in its finally block
         return self.confirm("Are you sure you want to continue?", default=False)
 
     def choose(

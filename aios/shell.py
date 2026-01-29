@@ -72,7 +72,7 @@ class AIOSShell:
 
         # Initialize core components
         self.ui = TerminalUI()
-        self.prompts = ConfirmationPrompt()
+        self.prompts = ConfirmationPrompt(terminal_ui=self.ui)
         self.safety = SafetyGuard()
         self.executor = CommandExecutor()
         self.streaming_executor = InteractiveExecutor()

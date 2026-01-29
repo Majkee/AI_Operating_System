@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from aios.ui.terminal import MultiStepProgress, TerminalUI
+from aios.ui.terminal import MultiStepProgress, TerminalUI, TrackedMultiStepProgress
 
 
 class TestMultiStepProgress:
@@ -88,17 +88,18 @@ class TestTerminalUIProgressFactory:
     """Tests for TerminalUI.multi_step_progress factory method."""
 
     def test_factory_creates_progress(self):
-        """Factory method creates MultiStepProgress instance."""
+        """Factory method creates TrackedMultiStepProgress wrapping MultiStepProgress."""
         with patch('aios.ui.terminal.get_config') as mock_config:
             mock_config.return_value.ui.use_colors = True
             mock_config.return_value.ui.show_technical_details = False
             mock_config.return_value.ui.show_commands = False
 
             ui = TerminalUI()
-            progress = ui.multi_step_progress(total=3)
+            tracked = ui.multi_step_progress(total=3)
 
-            assert isinstance(progress, MultiStepProgress)
-            assert progress._total == 3
+            assert isinstance(tracked, TrackedMultiStepProgress)
+            assert isinstance(tracked._progress, MultiStepProgress)
+            assert tracked._progress._total == 3
 
 
 class TestShellToolDescriptions:

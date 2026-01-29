@@ -45,6 +45,7 @@ class MultiStepProgress:
         self._description = ""
         self._progress: Optional[Progress] = None
         self._task_id = None
+        self._paused = False
 
     def __enter__(self):
         if self._total > 1:  # Only show for multi-step operations
@@ -72,6 +73,18 @@ class MultiStepProgress:
                     f"[green]✓[/green] Completed {self._total} operations"
                 )
         return False
+
+    def pause(self) -> None:
+        """Temporarily pause the progress display to allow user interaction."""
+        if self._progress is not None and not self._paused:
+            self._progress.stop()
+            self._paused = True
+
+    def resume(self) -> None:
+        """Resume the progress display after user interaction."""
+        if self._progress is not None and self._paused:
+            self._progress.start()
+            self._paused = False
 
     def update(self, step: int, description: str) -> None:
         """Update progress to show current step and description."""
@@ -273,6 +286,17 @@ class TerminalUI:
         )
         self.show_technical = config.ui.show_technical_details
         self.show_commands = config.ui.show_commands
+        self._active_progress: Optional[MultiStepProgress] = None
+
+    def pause_progress(self) -> None:
+        """Pause any active progress display to allow user interaction."""
+        if self._active_progress is not None:
+            self._active_progress.pause()
+
+    def resume_progress(self) -> None:
+        """Resume the progress display after user interaction."""
+        if self._active_progress is not None:
+            self._active_progress.resume()
 
     def print_welcome(
         self,
@@ -558,9 +582,10 @@ class TerminalUI:
         """Return a StreamingDisplay context manager for live output."""
         return StreamingDisplay(self.console, description)
 
-    def multi_step_progress(self, total: int) -> MultiStepProgress:
+    def multi_step_progress(self, total: int) -> "TrackedMultiStepProgress":
         """Return a MultiStepProgress context manager for multi-step operations."""
-        return MultiStepProgress(self.console, total)
+        progress = MultiStepProgress(self.console, total)
+        return TrackedMultiStepProgress(progress, self)
 
     def streaming_response(self) -> StreamingResponseHandler:
         """Return a StreamingResponseHandler for streaming Claude responses."""
@@ -770,3 +795,20 @@ Say trigger phrases to run pre-built workflows:
                 return f"{size:.1f} {unit}"
             size /= 1024
         return f"{size:.1f} TB"
+
+
+class TrackedMultiStepProgress:
+    """Wrapper that tracks the active progress in TerminalUI."""
+
+    def __init__(self, progress: MultiStepProgress, ui: TerminalUI):
+        self._progress = progress
+        self._ui = ui
+
+    def __enter__(self):
+        self._ui._active_progress = self._progress
+        return self._progress.__enter__()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        result = self._progress.__exit__(exc_type, exc_val, exc_tb)
+        self._ui._active_progress = None
+        return result
