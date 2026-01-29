@@ -5,6 +5,38 @@ All notable changes to AIOS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.4] - 2026-01-29
+
+### Changed
+
+#### Terminology Cleanup: "Plugin" → "Skill"
+Standardized terminology throughout the codebase, renaming "plugin" to "skill" for consistency:
+
+**Documentation:**
+- `ARCHITECTURE.md` — Updated component descriptions and diagrams
+- `CONTRIBUTING.md` — Updated contribution guidelines
+- `SKILLS.md` — Updated skill development guide
+- `skills/README.md` — Updated skill directory documentation
+- `skills/ANSIBLE_NETWORK.md` — Updated Ansible skill reference
+
+**Source Code:**
+- `aios/credentials.py` — Updated docstrings
+- `aios/stats.py` — Renamed plugin stats to skill stats
+- `skills/ansible_network.py` — Updated comments and docstrings
+
+**Tests:**
+- `tests/test_skills.py` — Updated test names and assertions
+- `tests/test_ansible_skill.py` — Updated test class names
+- `tests/test_completions.py` — Updated command references
+- `tests/test_handlers.py` — Updated handler tests
+- `tests/test_stats.py` — Updated stats tests
+
+**Other:**
+- `setup.py` — Updated package description
+- `snap/snapcraft.yaml` — Updated snap description
+
+---
+
 ## [0.10.3] - 2026-01-29
 
 ### Added

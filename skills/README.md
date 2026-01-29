@@ -1,12 +1,12 @@
-# AIOS Plugins
+# AIOS Skills
 
-This directory contains example plugins for AIOS.
+This directory contains example skills for AIOS.
 
-## Available Plugins
+## Available Skills
 
 ### ansible_network.py
 
-A comprehensive plugin for managing network devices using Ansible.
+A comprehensive skill for managing network devices using Ansible.
 
 **Features:**
 - Run Ansible playbooks and ad-hoc commands
@@ -53,32 +53,32 @@ ansible-galaxy collection install ansible.netcommon
 ansible-galaxy collection install cisco.ios
 ```
 
-## Installing Plugins
+## Installing Skills
 
-Copy plugin files to one of these directories:
+Copy skill files to one of these directories:
 
 ```
-~/.config/aios/plugins/     # User plugins (Linux/Mac)
-%APPDATA%\aios\plugins\     # User plugins (Windows)
-/etc/aios/plugins/          # System-wide plugins
+~/.config/aios/skills/     # User skills (Linux/Mac)
+%APPDATA%\aios\skills\     # User skills (Windows)
+/etc/aios/skills/          # System-wide skills
 ```
 
-## Creating Your Own Plugin
+## Creating Your Own Skill
 
-See [PLUGINS.md](../PLUGINS.md) for comprehensive documentation on creating plugins.
+See [SKILLS.md](../SKILLS.md) for comprehensive documentation on creating skills.
 
 ### Quick Start
 
 ```python
-from aios.plugins import PluginBase, PluginMetadata, ToolDefinition
+from aios.skills import SkillBase, SkillMetadata, ToolDefinition
 
-class MyPlugin(PluginBase):
+class MySkill(SkillBase):
     @property
     def metadata(self):
-        return PluginMetadata(
-            name="my-plugin",
+        return SkillMetadata(
+            name="my-skill",
             version="1.0.0",
-            description="My custom plugin",
+            description="My custom skill",
             author="Your Name"
         )
 
@@ -100,11 +100,11 @@ class MyPlugin(PluginBase):
         }
 ```
 
-## Plugin Best Practices
+## Skill Best Practices
 
 1. **Use descriptive names** - Tool names should clearly indicate their purpose
 2. **Validate input** - Don't trust params match your schema; validate in handlers
 3. **Handle errors gracefully** - Return error info rather than raising exceptions
 4. **Use `requires_confirmation`** - For any operation that modifies state
 5. **Document your tools** - Use the `description` field thoroughly
-6. **Write tests** - See `tests/test_ansible_plugin.py` for examples
+6. **Write tests** - See `tests/test_ansible_skill.py` for examples

@@ -1,8 +1,8 @@
 """
-Credential management for AIOS plugins.
+Credential management for AIOS skills.
 
 Provides secure storage and retrieval of credentials like
-passwords, API keys, and SSH keys for plugins.
+passwords, API keys, and SSH keys for skills.
 """
 
 import os
@@ -50,7 +50,7 @@ class Credential:
 
 
 class CredentialStore:
-    """Secure credential storage for AIOS plugins."""
+    """Secure credential storage for AIOS skills."""
 
     def __init__(self, store_path: Optional[Path] = None):
         """Initialize the credential store."""

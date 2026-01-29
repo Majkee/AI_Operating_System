@@ -9,7 +9,7 @@ description: |
   Features:
   - Natural language commands
   - Built-in safety guardrails
-  - Plugin system for custom tools
+  - Skill system for custom tools
   - Session persistence
   - Background task management
   - Streaming responses

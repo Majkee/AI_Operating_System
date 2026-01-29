@@ -12,7 +12,7 @@ from aios.stats import (
     UsageStatistics,
     ToolStats,
     RecipeStats,
-    PluginStats,
+    SkillStats,
     get_usage_stats,
     reset_usage_stats,
 )
@@ -151,23 +151,23 @@ class TestUsageStatistics:
         assert recipe_stats.failure_count == 1
         assert recipe_stats.total_steps_executed == 2
 
-    def test_plugin_registration(self, stats):
-        """Test plugin registration tracks tools and recipes."""
-        stats.register_plugin(
-            "test-plugin",
+    def test_skill_registration(self, stats):
+        """Test skill registration tracks tools and recipes."""
+        stats.register_skill(
+            "test-skill",
             tools=["tool1", "tool2"],
             recipes=["recipe1"],
         )
 
-        plugin_stats = stats.get_plugin_stats("test-plugin")
-        assert plugin_stats is not None
-        assert plugin_stats.tools_provided == 2
-        assert plugin_stats.recipes_provided == 1
+        skill_stats = stats.get_skill_stats("test-skill")
+        assert skill_stats is not None
+        assert skill_stats.tools_provided == 2
+        assert skill_stats.recipes_provided == 1
 
-    def test_plugin_tool_attribution(self, stats):
-        """Test tool executions are attributed to plugins."""
-        stats.register_plugin(
-            "my-plugin",
+    def test_skill_tool_attribution(self, stats):
+        """Test tool executions are attributed to skills."""
+        stats.register_skill(
+            "my-skill",
             tools=["custom_tool"],
             recipes=[],
         )
@@ -175,8 +175,8 @@ class TestUsageStatistics:
         start = stats.record_tool_start("custom_tool")
         stats.record_tool_end("custom_tool", start, success=True)
 
-        plugin_stats = stats.get_plugin_stats("my-plugin")
-        assert plugin_stats.tool_executions == 1
+        skill_stats = stats.get_skill_stats("my-skill")
+        assert skill_stats.tool_executions == 1
 
     def test_session_summary(self, stats):
         """Test session summary includes all metrics."""

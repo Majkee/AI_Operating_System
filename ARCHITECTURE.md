@@ -23,7 +23,7 @@ AIOS follows a layered architecture with clear separation of concerns:
 ├──────────────────────┬──────────────────────────────────────┤
 │    Context Layer      │       Support Systems                │
 │  (context/system.py,  │  (cache.py, ratelimit.py,           │
-│    session.py)        │   plugins.py, credentials.py)        │
+│    session.py)        │   skills.py, credentials.py)        │
 ├──────────────────────┴──────────────────────────────────────┤
 │                    Configuration                             │
 │                 (config.py, errors.py)                        │
@@ -47,13 +47,13 @@ The main orchestration layer that:
 - Coordinates between Claude and tool execution
 - Handles user input, special commands, and output
 - Maintains session state
-- Integrates caching, rate limiting, plugins, and credentials
+- Integrates caching, rate limiting, skills, and credentials
 
 Key class: `AIOSShell`
 - `run()`: Main interaction loop
 - `_handle_user_input()`: Process input, dispatch commands or send to Claude
 - `_process_tool_calls()`: Dispatch tool calls to appropriate handlers
-- `_load_plugins()`: Discover and register plugin tools
+- `_load_skills()`: Discover and register skill tools
 - `_check_rate_limit()`: Pre-call rate limit checks
 - `_show_sessions()`: List previous sessions
 - `_resume_session()`: Load and continue a previous session
@@ -96,11 +96,11 @@ Each tool has:
 
 Key class: `ToolHandler`
 - `register()`: Register a handler for a built-in tool
-- `register_tool()`: Register a complete tool with definition and handler (used by plugins)
+- `register_tool()`: Register a complete tool with definition and handler (used by skills)
 - `set_cache()`: Attach a `ToolResultCache` for transparent result caching
 - `execute()`: Dispatch tool calls to handlers (with cache check/store/invalidation)
-- `get_all_tools()`: Get all tool definitions (built-in + plugin)
-- `get_plugin_tools()`: Get only plugin-registered tools
+- `get_all_tools()`: Get all tool definitions (built-in + skill)
+- `get_skill_tools()`: Get only skill-registered tools
 
 ### Safety Layer (`safety/`)
 
@@ -205,32 +205,32 @@ Key classes:
 
 ## Support Systems
 
-### Plugin System (`plugins.py`)
+### Skill System (`skills.py`)
 
-Dynamic plugin loading and management:
+Dynamic skill loading and management:
 
 ```
-Plugin Discovery:
-1. Scan ~/.config/aios/plugins/
-2. Scan /etc/aios/plugins/
-3. Import Python files containing PluginBase subclasses
+Skill Discovery:
+1. Scan ~/.config/aios/skills/
+2. Scan /etc/aios/skills/
+3. Import Python files containing SkillBase subclasses
 4. Call on_load() lifecycle hook
 5. Register tools with ToolHandler
 ```
 
 Key classes:
-- `PluginBase`: Abstract base class for plugins
-- `PluginManager`: Discovery, loading, lifecycle management
-- `ToolDefinition`: Schema for plugin-provided tools
+- `SkillBase`: Abstract base class for skills
+- `SkillManager`: Discovery, loading, lifecycle management
+- `ToolDefinition`: Schema for skill-provided tools
 - `Recipe`: Multi-step workflow definition
 
 Lifecycle hooks:
-- `on_load()`: Plugin initialization
-- `on_unload()`: Plugin cleanup
+- `on_load()`: Skill initialization
+- `on_unload()`: Skill cleanup
 - `on_session_start()`: Session begin notification
 - `on_session_end()`: Session end notification
 
-See [PLUGINS.md](PLUGINS.md) for full documentation.
+See [SKILLS.md](SKILLS.md) for full documentation.
 
 ### Caching System (`cache.py`)
 
@@ -381,17 +381,17 @@ Key class: `ConfirmationPrompt`
 
 ```
 Start AIOS
-├─> Load plugins (_load_plugins())
+├─> Load skills (_load_skills())
 ├─> Initialize caches + rate limiter
 ├─> Start session (session.start_session())
-├─> Notify plugins (on_session_start)
+├─> Notify skills (on_session_start)
 │
 ├── Conversation Loop ──┐
 │   ├─> Process input   │
 │   ├─> Add to session  │
 │   └─> (repeat) ───────┘
 │
-├─> Notify plugins (on_session_end)
+├─> Notify skills (on_session_end)
 └─> Save session (session.end_session())
 ```
 
@@ -430,13 +430,13 @@ def _handle_my_tool(self, params: dict) -> ToolResult:
 self.tool_handler.register("my_tool", self._handle_my_tool)
 ```
 
-### Adding a Tool via Plugin
+### Adding a Tool via Skill
 
-Create a plugin file in `~/.config/aios/plugins/`:
+Create a skill file in `~/.config/aios/skills/`:
 ```python
-from aios.plugins import PluginBase, ToolDefinition
+from aios.skills import SkillBase, ToolDefinition
 
-class MyPlugin(PluginBase):
+class MySkill(SkillBase):
     def get_tools(self):
         return [ToolDefinition(
             name="my_tool",
@@ -446,7 +446,7 @@ class MyPlugin(PluginBase):
         )]
 ```
 
-See [PLUGINS.md](PLUGINS.md) for full plugin development guide.
+See [SKILLS.md](SKILLS.md) for full skill development guide.
 
 ### Adding Safety Patterns
 
@@ -472,12 +472,12 @@ class AIOSConfig(BaseModel):
 
 | Test File | Module | Tests |
 |-----------|--------|-------|
-| `test_ansible_plugin.py` | Ansible plugin | 42 |
+| `test_ansible_skill.py` | Ansible skill | 42 |
 | `test_cache.py` | Caching system | 30 |
 | `test_config.py` | Configuration | 15 |
 | `test_errors.py` | Error handling | 43 |
 | `test_files.py` | File operations | 32 |
-| `test_plugins.py` | Plugin system | 28 |
+| `test_skills.py` | Skill system | 28 |
 | `test_ratelimit.py` | Rate limiting | 33 |
 | `test_safety.py` | Safety guardrails | 22 |
 | `test_session.py` | Session management | 18 |
@@ -519,7 +519,7 @@ aios "show disk usage"
 - Parallel tool execution
 - Incremental context updates
 - Conversation summarization for long sessions
-- Plugin-level caching support
+- Skill-level caching support
 
 ## Security Model
 
@@ -529,7 +529,7 @@ aios "show disk usage"
 3. **System Commands**: Executed in sandbox with restrictions
 4. **File Access**: Limited to allowed paths
 5. **Credentials**: Encrypted at rest, decrypted only in memory
-6. **Plugin Code**: Trusted (user-installed), but tool calls confirmed if flagged
+6. **Skill Code**: Trusted (user-installed), but tool calls confirmed if flagged
 
 ### Defense in Depth
 1. Pattern matching (guardrails)

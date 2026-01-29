@@ -687,7 +687,7 @@ class TestPathValidation:
 # ===========================================================================
 
 class TestSafeExpressionEvaluator:
-    """Tests for the safe expression evaluator in plugins."""
+    """Tests for the safe expression evaluator in skills."""
 
     def test_simple_equality(self):
         """Test simple equality comparison."""

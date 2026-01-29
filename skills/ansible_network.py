@@ -1,8 +1,8 @@
 """
-AIOS Ansible Network Plugin
+AIOS Ansible Network Skill
 
-A comprehensive plugin for managing network devices using Ansible.
-Demonstrates all plugin system features including tools, recipes,
+A comprehensive skill for managing network devices using Ansible.
+Demonstrates all skill system features including tools, recipes,
 lifecycle hooks, and best practices.
 
 Features:
@@ -27,8 +27,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from aios.skills import (
-    PluginBase,
-    PluginMetadata,
+    SkillBase,
+    SkillMetadata,
     ToolDefinition,
     Recipe,
     RecipeStep,
@@ -422,14 +422,14 @@ BUILTIN_PLAYBOOKS = {
 
 
 # =============================================================================
-# Main Plugin Class
+# Main Skill Class
 # =============================================================================
 
-class AnsibleNetworkPlugin(PluginBase):
+class AnsibleNetworkSkill(SkillBase):
     """
-    AIOS Plugin for Ansible Network Device Management.
+    AIOS Skill for Ansible Network Device Management.
 
-    This plugin provides comprehensive tools for managing network devices
+    This skill provides comprehensive tools for managing network devices
     using Ansible, including playbook execution, ad-hoc commands,
     inventory management, and pre-built workflows.
     """
@@ -439,8 +439,8 @@ class AnsibleNetworkPlugin(PluginBase):
         self._devices: List[NetworkDevice] = []
 
     @property
-    def metadata(self) -> PluginMetadata:
-        return PluginMetadata(
+    def metadata(self) -> SkillMetadata:
+        return SkillMetadata(
             name="ansible-network",
             version="1.0.0",
             description="Manage network devices with Ansible - run playbooks, "
@@ -463,7 +463,7 @@ class AnsibleNetworkPlugin(PluginBase):
     # =========================================================================
 
     def on_load(self) -> None:
-        """Initialize plugin resources."""
+        """Initialize skill resources."""
         self.executor.ensure_directories()
 
         # Write built-in playbooks
@@ -478,7 +478,7 @@ class AnsibleNetworkPlugin(PluginBase):
             pass
 
     def on_unload(self) -> None:
-        """Clean up plugin resources."""
+        """Clean up skill resources."""
         # Save any unsaved inventory changes
         if self._devices:
             inventory_content = self.executor.generate_inventory(self._devices)
@@ -1200,8 +1200,8 @@ class AnsibleNetworkPlugin(PluginBase):
 
 
 # =============================================================================
-# Plugin Export
+# Skill Export
 # =============================================================================
 
-# This is the plugin class that AIOS will discover and load
-__plugin__ = AnsibleNetworkPlugin
+# This is the skill class that AIOS will discover and load
+__skill__ = AnsibleNetworkSkill

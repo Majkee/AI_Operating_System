@@ -1,4 +1,4 @@
-"""Tests for plugin system."""
+"""Tests for skill system."""
 
 import tempfile
 from pathlib import Path
@@ -10,14 +10,14 @@ from aios.skills import (
     ToolDefinition,
     RecipeStep,
     Recipe,
-    PluginMetadata,
-    PluginBase,
-    LoadedPlugin,
-    PluginManager,
+    SkillMetadata,
+    SkillBase,
+    LoadedSkill,
+    SkillManager,
     RecipeExecutor,
     BUILTIN_RECIPES,
-    get_plugin_manager,
-    create_simple_plugin,
+    get_skill_manager,
+    create_simple_skill,
 )
 
 
@@ -118,62 +118,62 @@ class TestRecipe:
         assert recipe.matches("CLEAN DISK") is True
 
 
-class TestPluginMetadata:
-    """Test PluginMetadata dataclass."""
+class TestSkillMetadata:
+    """Test SkillMetadata dataclass."""
 
     def test_creation(self):
-        """Test creating plugin metadata."""
-        metadata = PluginMetadata(
-            name="my-plugin",
+        """Test creating skill metadata."""
+        metadata = SkillMetadata(
+            name="my-skill",
             version="1.0.0",
-            description="My plugin",
+            description="My skill",
             author="Test Author"
         )
-        assert metadata.name == "my-plugin"
+        assert metadata.name == "my-skill"
         assert metadata.license == "MIT"  # Default
         assert metadata.dependencies == []
 
 
-class TestPluginBase:
-    """Test PluginBase class."""
+class TestSkillBase:
+    """Test SkillBase class."""
 
     def test_subclass_must_implement_metadata(self):
         """Test that subclass must implement metadata."""
-        class IncompletePlugin(PluginBase):
+        class IncompleteSkill(SkillBase):
             pass
 
         with pytest.raises(TypeError):
-            IncompletePlugin()
+            IncompleteSkill()
 
     def test_default_methods(self):
         """Test default method implementations."""
-        class MinimalPlugin(PluginBase):
+        class MinimalSkill(SkillBase):
             @property
             def metadata(self):
-                return PluginMetadata(
+                return SkillMetadata(
                     name="minimal",
                     version="1.0",
                     description="Minimal",
                     author="test"
                 )
 
-        plugin = MinimalPlugin()
-        assert plugin.get_tools() == []
-        assert plugin.get_recipes() == []
+        skill = MinimalSkill()
+        assert skill.get_tools() == []
+        assert skill.get_recipes() == []
         # Lifecycle methods should not raise
-        plugin.on_load()
-        plugin.on_unload()
-        plugin.on_session_start()
-        plugin.on_session_end()
+        skill.on_load()
+        skill.on_unload()
+        skill.on_session_start()
+        skill.on_session_end()
 
 
-class TestPluginManager:
-    """Test PluginManager class."""
+class TestSkillManager:
+    """Test SkillManager class."""
 
     def setup_method(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
-        self.manager = PluginManager(skill_dirs=[Path(self.temp_dir)])
+        self.manager = SkillManager(skill_dirs=[Path(self.temp_dir)])
 
     def teardown_method(self):
         """Clean up temp files."""
@@ -181,33 +181,33 @@ class TestPluginManager:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_empty_discover(self):
-        """Test discovering plugins in empty directory."""
-        plugins = self.manager.discover_plugins()
-        assert len(plugins) == 0
+        """Test discovering skills in empty directory."""
+        skills = self.manager.discover_skills()
+        assert len(skills) == 0
 
     def test_discover_py_file(self):
-        """Test discovering a Python file plugin."""
-        plugin_file = Path(self.temp_dir) / "test_plugin.py"
-        plugin_file.write_text("""
-from aios.plugins import PluginBase, PluginMetadata
+        """Test discovering a Python file skill."""
+        skill_file = Path(self.temp_dir) / "test_skill.py"
+        skill_file.write_text("""
+from aios.skills import SkillBase, SkillMetadata
 
-class TestPlugin(PluginBase):
+class TestSkill(SkillBase):
     @property
     def metadata(self):
-        return PluginMetadata(
-            name="test-plugin",
+        return SkillMetadata(
+            name="test-skill",
             version="1.0.0",
-            description="Test plugin",
+            description="Test skill",
             author="test"
         )
 """)
-        plugins = self.manager.discover_plugins()
-        assert len(plugins) == 1
+        skills = self.manager.discover_skills()
+        assert len(skills) == 1
 
-    def test_list_plugins_empty(self):
-        """Test listing plugins when none loaded."""
-        plugins = self.manager.list_plugins()
-        assert len(plugins) == 0
+    def test_list_skills_empty(self):
+        """Test listing skills when none loaded."""
+        skills = self.manager.list_skills()
+        assert len(skills) == 0
 
     def test_get_all_tools_empty(self):
         """Test getting tools when none registered."""
@@ -217,7 +217,7 @@ class TestPlugin(PluginBase):
     def test_builtin_recipes(self):
         """Test that builtin recipes are registered."""
         # Use global manager which has builtin recipes
-        manager = get_plugin_manager()
+        manager = get_skill_manager()
         recipes = manager.get_all_recipes()
         assert len(recipes) > 0
         assert "disk_cleanup" in recipes
@@ -225,7 +225,7 @@ class TestPlugin(PluginBase):
     def test_find_matching_recipe(self):
         """Test finding a matching recipe."""
         # Create a manager with a test recipe
-        manager = PluginManager(skill_dirs=[])
+        manager = SkillManager(skill_dirs=[])
         test_recipe = Recipe(
             name="test_recipe",
             description="Test",
@@ -240,7 +240,7 @@ class TestPlugin(PluginBase):
 
     def test_find_no_matching_recipe(self):
         """Test when no recipe matches."""
-        manager = PluginManager(skill_dirs=[])
+        manager = SkillManager(skill_dirs=[])
         test_recipe = Recipe(
             name="test_recipe",
             description="Test",
@@ -407,20 +407,20 @@ class TestBuiltinRecipes:
             assert len(recipe.trigger_phrases) > 0, f"Recipe {recipe.name} has no triggers"
 
 
-class TestCreateSimplePlugin:
-    """Test create_simple_plugin factory."""
+class TestCreateSimpleSkill:
+    """Test create_simple_skill factory."""
 
-    def test_creates_plugin_class(self):
-        """Test factory creates a plugin class."""
-        PluginClass = create_simple_plugin(
+    def test_creates_skill_class(self):
+        """Test factory creates a skill class."""
+        SkillClass = create_simple_skill(
             name="simple",
             version="1.0",
-            description="Simple plugin"
+            description="Simple skill"
         )
-        assert issubclass(PluginClass, PluginBase)
+        assert issubclass(SkillClass, SkillBase)
 
-        plugin = PluginClass()
-        assert plugin.metadata.name == "simple"
+        skill = SkillClass()
+        assert skill.metadata.name == "simple"
 
     def test_with_tools(self):
         """Test factory with tools."""
@@ -431,15 +431,15 @@ class TestCreateSimplePlugin:
             handler=MagicMock()
         )
 
-        PluginClass = create_simple_plugin(
+        SkillClass = create_simple_skill(
             name="with-tools",
             version="1.0",
-            description="Plugin with tools",
+            description="Skill with tools",
             tools=[tool]
         )
 
-        plugin = PluginClass()
-        tools = plugin.get_tools()
+        skill = SkillClass()
+        tools = skill.get_tools()
         assert len(tools) == 1
         assert tools[0].name == "my_tool"
 
@@ -452,14 +452,14 @@ class TestCreateSimplePlugin:
             steps=[]
         )
 
-        PluginClass = create_simple_plugin(
+        SkillClass = create_simple_skill(
             name="with-recipes",
             version="1.0",
-            description="Plugin with recipes",
+            description="Skill with recipes",
             recipes=[recipe]
         )
 
-        plugin = PluginClass()
-        recipes = plugin.get_recipes()
+        skill = SkillClass()
+        recipes = skill.get_recipes()
         assert len(recipes) == 1
         assert recipes[0].name == "my_recipe"

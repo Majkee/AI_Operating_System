@@ -1,4 +1,4 @@
-"""Tests for Ansible Network Plugin."""
+"""Tests for Ansible Network Skill."""
 
 import tempfile
 from pathlib import Path
@@ -6,18 +6,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-# Import plugin components
+# Import skill components
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills"))
 
 from ansible_network import (
-    AnsibleNetworkPlugin,
+    AnsibleNetworkSkill,
     NetworkDevice,
     PlaybookResult,
     AnsibleExecutor,
     BUILTIN_PLAYBOOKS,
 )
-from aios.skills import PluginBase, ToolDefinition, Recipe
+from aios.skills import SkillBase, ToolDefinition, Recipe
 
 
 class TestNetworkDevice:
@@ -239,34 +239,34 @@ switch01                   : ok=3    changed=2    unreachable=0    failed=0    s
         assert isinstance(result, PlaybookResult)
 
 
-class TestAnsibleNetworkPlugin:
-    """Test AnsibleNetworkPlugin class."""
+class TestAnsibleNetworkSkill:
+    """Test AnsibleNetworkSkill class."""
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.plugin = AnsibleNetworkPlugin()
+        self.skill = AnsibleNetworkSkill()
         self.temp_dir = tempfile.mkdtemp()
 
         # Override paths for testing
-        self.plugin._executor = AnsibleExecutor(
+        self.skill._executor = AnsibleExecutor(
             inventory_path=Path(self.temp_dir) / "inventory.yml"
         )
-        self.plugin.executor.playbooks_path = Path(self.temp_dir) / "playbooks"
-        self.plugin.executor.backups_path = Path(self.temp_dir) / "backups"
-        self.plugin.executor.ensure_directories()
+        self.skill.executor.playbooks_path = Path(self.temp_dir) / "playbooks"
+        self.skill.executor.backups_path = Path(self.temp_dir) / "backups"
+        self.skill.executor.ensure_directories()
 
     def teardown_method(self):
         """Clean up temp files."""
         import shutil
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def test_is_plugin_base(self):
-        """Test that plugin inherits from PluginBase."""
-        assert isinstance(self.plugin, PluginBase)
+    def test_is_skill_base(self):
+        """Test that skill inherits from SkillBase."""
+        assert isinstance(self.skill, SkillBase)
 
     def test_metadata(self):
-        """Test plugin metadata."""
-        meta = self.plugin.metadata
+        """Test skill metadata."""
+        meta = self.skill.metadata
 
         assert meta.name == "ansible-network"
         assert meta.version == "1.0.0"
@@ -274,8 +274,8 @@ class TestAnsibleNetworkPlugin:
         assert meta.author == "AIOS Community"
 
     def test_get_tools(self):
-        """Test that plugin returns tools."""
-        tools = self.plugin.get_tools()
+        """Test that skill returns tools."""
+        tools = self.skill.get_tools()
 
         assert len(tools) > 0
         assert all(isinstance(t, ToolDefinition) for t in tools)
@@ -289,8 +289,8 @@ class TestAnsibleNetworkPlugin:
         assert "ansible_backup_config" in tool_names
 
     def test_get_recipes(self):
-        """Test that plugin returns recipes."""
-        recipes = self.plugin.get_recipes()
+        """Test that skill returns recipes."""
+        recipes = self.skill.get_recipes()
 
         assert len(recipes) > 0
         assert all(isinstance(r, Recipe) for r in recipes)
@@ -303,34 +303,34 @@ class TestAnsibleNetworkPlugin:
     def test_lifecycle_hooks_exist(self):
         """Test that lifecycle hooks are implemented."""
         # These should not raise
-        self.plugin.on_load()
-        self.plugin.on_session_start()
-        self.plugin.on_session_end()
-        self.plugin.on_unload()
+        self.skill.on_load()
+        self.skill.on_session_start()
+        self.skill.on_session_end()
+        self.skill.on_unload()
 
     def test_on_load_creates_playbooks(self):
         """Test that on_load creates built-in playbooks."""
-        self.plugin.on_load()
+        self.skill.on_load()
 
         for playbook_name in BUILTIN_PLAYBOOKS:
-            playbook_path = self.plugin.executor.playbooks_path / f"{playbook_name}.yml"
+            playbook_path = self.skill.executor.playbooks_path / f"{playbook_name}.yml"
             assert playbook_path.exists(), f"Missing playbook: {playbook_name}"
 
 
-class TestPluginToolHandlers:
-    """Test plugin tool handlers."""
+class TestSkillToolHandlers:
+    """Test skill tool handlers."""
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.plugin = AnsibleNetworkPlugin()
+        self.skill = AnsibleNetworkSkill()
         self.temp_dir = tempfile.mkdtemp()
 
-        self.plugin._executor = AnsibleExecutor(
+        self.skill._executor = AnsibleExecutor(
             inventory_path=Path(self.temp_dir) / "inventory.yml"
         )
-        self.plugin.executor.playbooks_path = Path(self.temp_dir) / "playbooks"
-        self.plugin.executor.backups_path = Path(self.temp_dir) / "backups"
-        self.plugin.executor.ensure_directories()
+        self.skill.executor.playbooks_path = Path(self.temp_dir) / "playbooks"
+        self.skill.executor.backups_path = Path(self.temp_dir) / "backups"
+        self.skill.executor.ensure_directories()
 
     def teardown_method(self):
         """Clean up temp files."""
@@ -339,25 +339,25 @@ class TestPluginToolHandlers:
 
     def test_add_device_handler(self):
         """Test adding a device."""
-        result = self.plugin._handle_add_device({
+        result = self.skill._handle_add_device({
             "hostname": "switch01",
             "ip_address": "192.168.1.1",
             "device_type": "cisco.ios.ios"
         })
 
         assert result["success"] is True
-        assert len(self.plugin._devices) == 1
-        assert self.plugin._devices[0].hostname == "switch01"
+        assert len(self.skill._devices) == 1
+        assert self.skill._devices[0].hostname == "switch01"
 
     def test_add_duplicate_device(self):
         """Test adding a duplicate device fails."""
-        self.plugin._handle_add_device({
+        self.skill._handle_add_device({
             "hostname": "switch01",
             "ip_address": "192.168.1.1",
             "device_type": "cisco.ios.ios"
         })
 
-        result = self.plugin._handle_add_device({
+        result = self.skill._handle_add_device({
             "hostname": "switch01",
             "ip_address": "192.168.1.2",
             "device_type": "cisco.ios.ios"
@@ -368,25 +368,25 @@ class TestPluginToolHandlers:
 
     def test_list_devices_empty(self):
         """Test listing devices when empty."""
-        result = self.plugin._handle_list_devices({})
+        result = self.skill._handle_list_devices({})
 
         assert result["success"] is True
         assert "empty" in result["message"].lower() or "no devices" in result["output"].lower()
 
     def test_list_devices_with_devices(self):
         """Test listing devices."""
-        self.plugin._handle_add_device({
+        self.skill._handle_add_device({
             "hostname": "router01",
             "ip_address": "10.0.0.1",
             "device_type": "cisco.ios.ios"
         })
-        self.plugin._handle_add_device({
+        self.skill._handle_add_device({
             "hostname": "switch01",
             "ip_address": "10.0.0.2",
             "device_type": "arista.eos.eos"
         })
 
-        result = self.plugin._handle_list_devices({})
+        result = self.skill._handle_list_devices({})
 
         assert result["success"] is True
         assert "router01" in result["output"]
@@ -394,18 +394,18 @@ class TestPluginToolHandlers:
 
     def test_list_devices_filter_by_type(self):
         """Test filtering devices by type."""
-        self.plugin._handle_add_device({
+        self.skill._handle_add_device({
             "hostname": "cisco01",
             "ip_address": "10.0.0.1",
             "device_type": "cisco.ios.ios"
         })
-        self.plugin._handle_add_device({
+        self.skill._handle_add_device({
             "hostname": "arista01",
             "ip_address": "10.0.0.2",
             "device_type": "arista.eos.eos"
         })
 
-        result = self.plugin._handle_list_devices({
+        result = self.skill._handle_list_devices({
             "device_type": "cisco.ios.ios"
         })
 
@@ -415,29 +415,29 @@ class TestPluginToolHandlers:
 
     def test_remove_device_handler(self):
         """Test removing a device."""
-        self.plugin._handle_add_device({
+        self.skill._handle_add_device({
             "hostname": "switch01",
             "ip_address": "192.168.1.1",
             "device_type": "cisco.ios.ios"
         })
 
-        result = self.plugin._handle_remove_device({"hostname": "switch01"})
+        result = self.skill._handle_remove_device({"hostname": "switch01"})
 
         assert result["success"] is True
-        assert len(self.plugin._devices) == 0
+        assert len(self.skill._devices) == 0
 
     def test_remove_nonexistent_device(self):
         """Test removing a device that doesn't exist."""
-        result = self.plugin._handle_remove_device({"hostname": "nonexistent"})
+        result = self.skill._handle_remove_device({"hostname": "nonexistent"})
 
         assert result["success"] is False
         assert "not found" in result["error"]
 
     def test_list_playbooks_handler(self):
         """Test listing playbooks."""
-        self.plugin.on_load()  # Creates built-in playbooks
+        self.skill.on_load()  # Creates built-in playbooks
 
-        result = self.plugin._handle_list_playbooks({})
+        result = self.skill._handle_list_playbooks({})
 
         assert result["success"] is True
         assert "backup_config" in result["output"]
@@ -445,9 +445,9 @@ class TestPluginToolHandlers:
 
     def test_show_playbook_handler(self):
         """Test showing playbook contents."""
-        self.plugin.on_load()
+        self.skill.on_load()
 
-        result = self.plugin._handle_show_playbook({"playbook": "backup_config"})
+        result = self.skill._handle_show_playbook({"playbook": "backup_config"})
 
         assert result["success"] is True
         assert "Backup" in result["output"]
@@ -455,35 +455,35 @@ class TestPluginToolHandlers:
 
     def test_show_nonexistent_playbook(self):
         """Test showing a playbook that doesn't exist."""
-        result = self.plugin._handle_show_playbook({"playbook": "nonexistent"})
+        result = self.skill._handle_show_playbook({"playbook": "nonexistent"})
 
         assert result["success"] is False
         assert "not found" in result["error"].lower()
 
 
-class TestPluginRecipes:
-    """Test plugin recipes."""
+class TestSkillRecipes:
+    """Test skill recipes."""
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.plugin = AnsibleNetworkPlugin()
+        self.skill = AnsibleNetworkSkill()
 
     def test_network_health_check_recipe(self):
         """Test network health check recipe."""
-        recipes = self.plugin.get_recipes()
+        recipes = self.skill.get_recipes()
         recipe = next(r for r in recipes if r.name == "network_health_check")
 
         assert len(recipe.steps) >= 2
         assert "network health" in " ".join(recipe.trigger_phrases).lower()
 
         # Check steps use valid tools
-        tool_names = [t.name for t in self.plugin.get_tools()]
+        tool_names = [t.name for t in self.skill.get_tools()]
         for step in recipe.steps:
             assert step.tool_name in tool_names
 
     def test_network_backup_recipe(self):
         """Test network backup recipe."""
-        recipes = self.plugin.get_recipes()
+        recipes = self.skill.get_recipes()
         recipe = next(r for r in recipes if r.name == "network_backup")
 
         assert len(recipe.steps) >= 1
@@ -491,7 +491,7 @@ class TestPluginRecipes:
 
     def test_recipe_trigger_matching(self):
         """Test that recipes match expected triggers."""
-        recipes = self.plugin.get_recipes()
+        recipes = self.skill.get_recipes()
 
         health_recipe = next(r for r in recipes if r.name == "network_health_check")
         assert health_recipe.matches("check network status")
@@ -544,8 +544,8 @@ class TestToolDefinitionQuality:
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.plugin = AnsibleNetworkPlugin()
-        self.tools = self.plugin.get_tools()
+        self.skill = AnsibleNetworkSkill()
+        self.tools = self.skill.get_tools()
 
     def test_all_tools_have_descriptions(self):
         """Test that all tools have descriptions."""

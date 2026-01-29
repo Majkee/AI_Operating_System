@@ -4,7 +4,7 @@ Usage statistics tracking for AIOS.
 Tracks execution counts, success rates, and timing for:
 - Tools
 - Recipes
-- Plugins
+- Skills
 """
 
 import json
@@ -97,8 +97,8 @@ class RecipeStats:
 
 
 @dataclass
-class PluginStats:
-    """Statistics for a plugin."""
+class SkillStats:
+    """Statistics for a skill."""
     name: str
     tools_provided: int = 0
     recipes_provided: int = 0
@@ -118,6 +118,10 @@ class PluginStats:
         }
 
 
+# Backwards compatibility alias
+PluginStats = SkillStats
+
+
 class UsageStatistics:
     """
     Centralized usage statistics tracker.
@@ -125,7 +129,7 @@ class UsageStatistics:
     Tracks:
     - Tool execution counts, success rates, durations
     - Recipe execution counts and step completions
-    - Plugin usage
+    - Skill usage
     - Session-level aggregates
 
     Stats are persisted to disk and can be aggregated across sessions.
@@ -152,12 +156,12 @@ class UsageStatistics:
         # Recipe statistics
         self._recipe_stats: Dict[str, RecipeStats] = {}
 
-        # Plugin statistics
-        self._plugin_stats: Dict[str, PluginStats] = {}
+        # Skill statistics
+        self._skill_stats: Dict[str, SkillStats] = {}
 
-        # Mapping of tools to plugins (for attribution)
-        self._tool_to_plugin: Dict[str, str] = {}
-        self._recipe_to_plugin: Dict[str, str] = {}
+        # Mapping of tools to skills (for attribution)
+        self._tool_to_skill: Dict[str, str] = {}
+        self._recipe_to_skill: Dict[str, str] = {}
 
         # Session totals
         self._total_tool_executions = 0
@@ -216,11 +220,11 @@ class UsageStatistics:
 
         self._total_tool_executions += 1
 
-        # Attribute to plugin if known
-        if tool_name in self._tool_to_plugin:
-            plugin_name = self._tool_to_plugin[tool_name]
-            if plugin_name in self._plugin_stats:
-                self._plugin_stats[plugin_name].tool_executions += 1
+        # Attribute to skill if known
+        if tool_name in self._tool_to_skill:
+            skill_name = self._tool_to_skill[tool_name]
+            if skill_name in self._skill_stats:
+                self._skill_stats[skill_name].tool_executions += 1
 
     def get_tool_stats(self, tool_name: str) -> Optional[ToolStats]:
         """Get statistics for a specific tool."""
@@ -288,11 +292,11 @@ class UsageStatistics:
 
         self._total_recipe_executions += 1
 
-        # Attribute to plugin if known
-        if recipe_name in self._recipe_to_plugin:
-            plugin_name = self._recipe_to_plugin[recipe_name]
-            if plugin_name in self._plugin_stats:
-                self._plugin_stats[plugin_name].recipe_executions += 1
+        # Attribute to skill if known
+        if recipe_name in self._recipe_to_skill:
+            skill_name = self._recipe_to_skill[recipe_name]
+            if skill_name in self._skill_stats:
+                self._skill_stats[skill_name].recipe_executions += 1
 
     def get_recipe_stats(self, recipe_name: str) -> Optional[RecipeStats]:
         """Get statistics for a specific recipe."""
@@ -303,42 +307,55 @@ class UsageStatistics:
         return self._recipe_stats.copy()
 
     # =========================================================================
-    # Plugin Statistics
+    # Skill Statistics
     # =========================================================================
 
-    def register_plugin(
+    def register_skill(
         self,
-        plugin_name: str,
+        skill_name: str,
         tools: List[str],
         recipes: List[str]
     ) -> None:
-        """Register a plugin and its provided tools/recipes.
+        """Register a skill and its provided tools/recipes.
 
         Args:
-            plugin_name: Name of the plugin.
-            tools: List of tool names provided by the plugin.
-            recipes: List of recipe names provided by the plugin.
+            skill_name: Name of the skill.
+            tools: List of tool names provided by the skill.
+            recipes: List of recipe names provided by the skill.
         """
-        self._plugin_stats[plugin_name] = PluginStats(
-            name=plugin_name,
+        self._skill_stats[skill_name] = SkillStats(
+            name=skill_name,
             tools_provided=len(tools),
             recipes_provided=len(recipes),
             loaded_at=datetime.now().isoformat()
         )
 
-        # Map tools and recipes to plugin for attribution
+        # Map tools and recipes to skill for attribution
         for tool in tools:
-            self._tool_to_plugin[tool] = plugin_name
+            self._tool_to_skill[tool] = skill_name
         for recipe in recipes:
-            self._recipe_to_plugin[recipe] = plugin_name
+            self._recipe_to_skill[recipe] = skill_name
 
-    def get_plugin_stats(self, plugin_name: str) -> Optional[PluginStats]:
-        """Get statistics for a specific plugin."""
-        return self._plugin_stats.get(plugin_name)
+    def get_skill_stats(self, skill_name: str) -> Optional[SkillStats]:
+        """Get statistics for a specific skill."""
+        return self._skill_stats.get(skill_name)
 
-    def get_all_plugin_stats(self) -> Dict[str, PluginStats]:
-        """Get statistics for all plugins."""
-        return self._plugin_stats.copy()
+    def get_all_skill_stats(self) -> Dict[str, SkillStats]:
+        """Get statistics for all skills."""
+        return self._skill_stats.copy()
+
+    # Backwards compatibility aliases
+    def register_plugin(self, plugin_name: str, tools: List[str], recipes: List[str]) -> None:
+        """Alias for register_skill (backwards compatibility)."""
+        return self.register_skill(plugin_name, tools, recipes)
+
+    def get_plugin_stats(self, plugin_name: str) -> Optional[SkillStats]:
+        """Alias for get_skill_stats (backwards compatibility)."""
+        return self.get_skill_stats(plugin_name)
+
+    def get_all_plugin_stats(self) -> Dict[str, SkillStats]:
+        """Alias for get_all_skill_stats (backwards compatibility)."""
+        return self.get_all_skill_stats()
 
     # =========================================================================
     # Session Statistics
@@ -358,7 +375,7 @@ class UsageStatistics:
             "total_errors": self._total_errors,
             "unique_tools_used": len(self._tool_stats),
             "unique_recipes_used": len(self._recipe_stats),
-            "plugins_active": len(self._plugin_stats),
+            "skills_active": len(self._skill_stats),
         }
 
     # =========================================================================
@@ -401,7 +418,7 @@ class UsageStatistics:
             "session": self.get_session_summary(),
             "tools": {name: stats.to_dict() for name, stats in self._tool_stats.items()},
             "recipes": {name: stats.to_dict() for name, stats in self._recipe_stats.items()},
-            "plugins": {name: stats.to_dict() for name, stats in self._plugin_stats.items()},
+            "skills": {name: stats.to_dict() for name, stats in self._skill_stats.items()},
         }
         try:
             with open(session_file, "w") as f:

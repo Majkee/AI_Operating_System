@@ -186,7 +186,7 @@ Look for issues labeled `good first issue` - these are suitable for newcomers.
 
 ### Feature Ideas
 
-- Plugin system for community tools
+- Skill system for community tools
 - Web-based interface
 - Multi-language support
 - Voice input integration

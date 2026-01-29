@@ -51,7 +51,7 @@ class TestCommandRegistry:
         names = {e["name"] for e in COMMAND_REGISTRY}
         expected = {
             "exit", "help", "clear", "history",
-            "plugins", "recipes", "tools", "stats",
+            "skills", "recipes", "tools", "stats",
             "credentials", "sessions", "resume",
         }
         assert expected.issubset(names)
@@ -62,9 +62,9 @@ class TestCommandRegistry:
         assert entry["name"] == "help"
 
     def test_find_entry_by_alias(self):
-        entry = _find_entry("/plugins")
+        entry = _find_entry("/skills")
         assert entry is not None
-        assert entry["name"] == "plugins"
+        assert entry["name"] == "skills"
 
     def test_find_entry_missing(self):
         assert _find_entry("nonexistent_command") is None
@@ -102,8 +102,8 @@ class TestAIOSCompleter:
         assert "help" not in texts
 
     def test_slash_prefix(self, completer):
-        texts = _completion_texts(_get_completions(completer, "/pl"))
-        assert "/plugins" in texts
+        texts = _completion_texts(_get_completions(completer, "/sk"))
+        assert "/skills" in texts
 
     def test_full_command_match(self, completer):
         texts = _completion_texts(_get_completions(completer, "help"))
@@ -152,12 +152,12 @@ class TestAIOSCompleter:
         assert completions == []
 
     def test_no_duplicate_completions_for_primary_and_alias(self, completer):
-        """If user types 'plugins', both 'plugins' (name) and '/plugins' (alias)
+        """If user types 'skills', both 'skills' (name) and '/skills' (alias)
         should NOT both appear – only the matching one should."""
-        texts = _completion_texts(_get_completions(completer, "plugins"))
-        assert "plugins" in texts
-        # /plugins doesn't start with "plugins" so should not appear
-        assert "/plugins" not in texts
+        texts = _completion_texts(_get_completions(completer, "skills"))
+        assert "skills" in texts
+        # /skills doesn't start with "skills" so should not appear
+        assert "/skills" not in texts
 
 
 # ---------------------------------------------------------------------------
@@ -201,5 +201,5 @@ class TestBottomToolbar:
         assert "Enter" in html
 
     def test_slash_exact_command(self, mock_session):
-        html = self._toolbar_text(mock_session, "/plugins")
-        assert "plugins" in html.lower()
+        html = self._toolbar_text(mock_session, "/skills")
+        assert "skills" in html.lower()

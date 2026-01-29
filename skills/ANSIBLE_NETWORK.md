@@ -1,10 +1,10 @@
-# Ansible Network Plugin for AIOS
+# Ansible Network Skill for AIOS
 
-A comprehensive plugin for managing network devices using Ansible automation.
+A comprehensive skill for managing network devices using Ansible automation.
 
 ## Overview
 
-The Ansible Network Plugin extends AIOS with powerful network device management capabilities. It allows you to:
+The Ansible Network Skill extends AIOS with powerful network device management capabilities. It allows you to:
 
 - Manage network device inventory
 - Run Ansible playbooks and ad-hoc commands
@@ -31,17 +31,17 @@ ansible-galaxy collection install junipernetworks.junos
 
 ## Installation
 
-Copy `ansible_network.py` to your AIOS plugins directory:
+Copy `ansible_network.py` to your AIOS skills directory:
 
 ```bash
 # Linux/Mac
-cp ansible_network.py ~/.config/aios/plugins/
+cp ansible_network.py ~/.config/aios/skills/
 
 # Or system-wide
-sudo cp ansible_network.py /etc/aios/plugins/
+sudo cp ansible_network.py /etc/aios/skills/
 ```
 
-The plugin will be automatically loaded when AIOS starts.
+The skill will be automatically loaded when AIOS starts.
 
 ## Tools Reference
 

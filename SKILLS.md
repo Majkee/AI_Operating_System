@@ -1,46 +1,46 @@
-# AIOS Plugin System
+# AIOS Skill System
 
-AIOS supports plugins that extend its functionality with custom tools and workflows.
+AIOS supports skills that extend its functionality with custom tools and workflows.
 
 ## Overview
 
-Plugins can:
+Skills can:
 - Add new tools that Claude can use
 - Define recipes (pre-built workflows) for common tasks
 - Hook into AIOS lifecycle events
 
-## Plugin Locations
+## Skill Locations
 
-AIOS looks for plugins in these directories:
+AIOS looks for skills in these directories:
 
-1. `~/.config/aios/plugins/` (user plugins)
-2. `/etc/aios/plugins/` (system-wide plugins)
+1. `~/.config/aios/skills/` (user skills)
+2. `/etc/aios/skills/` (system-wide skills)
 
-## Creating a Plugin
+## Creating a Skill
 
-### Basic Plugin Structure
+### Basic Skill Structure
 
-Create a Python file in the plugins directory:
+Create a Python file in the skills directory:
 
 ```python
-# ~/.config/aios/plugins/my_plugin.py
+# ~/.config/aios/skills/my_skill.py
 
-from aios.plugins import PluginBase, PluginMetadata, ToolDefinition
+from aios.skills import SkillBase, SkillMetadata, ToolDefinition
 
-class MyPlugin(PluginBase):
+class MySkill(SkillBase):
     @property
     def metadata(self):
-        return PluginMetadata(
-            name="my-plugin",
+        return SkillMetadata(
+            name="my-skill",
             version="1.0.0",
-            description="My custom AIOS plugin",
+            description="My custom AIOS skill",
             author="Your Name",
-            homepage="https://github.com/you/my-plugin",  # optional
+            homepage="https://github.com/you/my-skill",  # optional
             license="MIT"  # optional, defaults to MIT
         )
 
     def get_tools(self):
-        """Return list of tools this plugin provides."""
+        """Return list of tools this skill provides."""
         return [
             ToolDefinition(
                 name="my_custom_tool",
@@ -80,20 +80,20 @@ class MyPlugin(PluginBase):
         }
 ```
 
-### Plugin Lifecycle Hooks
+### Skill Lifecycle Hooks
 
 ```python
-class MyPlugin(PluginBase):
+class MySkill(SkillBase):
     # ... metadata and tools ...
 
     def on_load(self):
-        """Called when plugin is loaded."""
-        print("Plugin loaded!")
+        """Called when skill is loaded."""
+        print("Skill loaded!")
         # Initialize resources, connections, etc.
 
     def on_unload(self):
-        """Called when plugin is unloaded."""
-        print("Plugin unloading...")
+        """Called when skill is unloaded."""
+        print("Skill unloading...")
         # Clean up resources
 
     def on_session_start(self):
@@ -105,20 +105,20 @@ class MyPlugin(PluginBase):
         pass
 ```
 
-### Quick Plugin Creation
+### Quick Skill Creation
 
-For simple plugins, use the factory function:
+For simple skills, use the factory function:
 
 ```python
-from aios.plugins import create_simple_plugin, ToolDefinition
+from aios.skills import create_simple_skill, ToolDefinition
 
 def my_handler(params):
     return {"success": True, "output": "Hello!"}
 
-MyPlugin = create_simple_plugin(
-    name="simple-plugin",
+MySkill = create_simple_skill(
+    name="simple-skill",
     version="1.0.0",
-    description="A simple plugin",
+    description="A simple skill",
     tools=[
         ToolDefinition(
             name="say_hello",
@@ -135,9 +135,9 @@ MyPlugin = create_simple_plugin(
 Recipes are pre-defined workflows that run multiple tools in sequence.
 
 ```python
-from aios.plugins import PluginBase, Recipe, RecipeStep
+from aios.skills import SkillBase, Recipe, RecipeStep
 
-class MyPlugin(PluginBase):
+class MySkill(SkillBase):
     # ... metadata ...
 
     def get_recipes(self):
@@ -214,14 +214,14 @@ AIOS includes these recipes out of the box:
 | `find_duplicates` | "find duplicates", "duplicate files" | Find potential duplicate files by size |
 | `backup_documents` | "backup documents", "backup my files" | Create compressed backup of Documents |
 
-## Plugin Package Structure
+## Skill Package Structure
 
-For complex plugins, use a package structure:
+For complex skills, use a package structure:
 
 ```
-~/.config/aios/plugins/
-└── my_plugin/
-    ├── __init__.py      # Plugin class definition
+~/.config/aios/skills/
+└── my_skill/
+    ├── __init__.py      # Skill class definition
     ├── tools.py         # Tool handlers
     ├── recipes.py       # Recipe definitions
     └── utils.py         # Helper functions
@@ -229,17 +229,17 @@ For complex plugins, use a package structure:
 
 **`__init__.py`:**
 ```python
-from aios.plugins import PluginBase, PluginMetadata
+from aios.skills import SkillBase, SkillMetadata
 from .tools import get_tools
 from .recipes import get_recipes
 
-class MyPlugin(PluginBase):
+class MySkill(SkillBase):
     @property
     def metadata(self):
-        return PluginMetadata(
-            name="my-plugin",
+        return SkillMetadata(
+            name="my-skill",
             version="1.0.0",
-            description="My plugin package",
+            description="My skill package",
             author="Your Name"
         )
 
@@ -308,27 +308,27 @@ def my_handler(params):
     }
 ```
 
-## Plugin Manager API
+## Skill Manager API
 
-### Loading Plugins Programmatically
+### Loading Skills Programmatically
 
 ```python
-from aios.plugins import PluginManager
+from aios.skills import SkillManager
 
-manager = PluginManager()
+manager = SkillManager()
 
-# Discover and load all plugins
+# Discover and load all skills
 loaded = manager.load_all()
-print(f"Loaded {len(loaded)} plugins")
+print(f"Loaded {len(loaded)} skills")
 
-# Load a specific plugin
-plugin = manager.load_plugin(Path("~/.config/aios/plugins/my_plugin.py"))
+# Load a specific skill
+skill = manager.load_skill(Path("~/.config/aios/skills/my_skill.py"))
 
-# List loaded plugins
-for metadata in manager.list_plugins():
+# List loaded skills
+for metadata in manager.list_skills():
     print(f"{metadata.name} v{metadata.version}")
 
-# Get all tools from plugins
+# Get all tools from skills
 tools = manager.get_all_tools()
 
 # Get all recipes
@@ -338,26 +338,26 @@ recipes = manager.get_all_recipes()
 recipe = manager.find_matching_recipe("clean up my disk")
 ```
 
-### Enabling/Disabling Plugins
+### Enabling/Disabling Skills
 
 ```python
-manager.disable_plugin("my-plugin")  # Temporarily disable
-manager.enable_plugin("my-plugin")   # Re-enable
-manager.unload_plugin("my-plugin")   # Fully unload
+manager.disable_skill("my-skill")  # Temporarily disable
+manager.enable_skill("my-skill")   # Re-enable
+manager.unload_skill("my-skill")   # Fully unload
 ```
 
-## Example Plugins
+## Example Skills
 
-### Weather Plugin
+### Weather Skill
 
 ```python
 import requests
-from aios.plugins import PluginBase, PluginMetadata, ToolDefinition
+from aios.skills import SkillBase, SkillMetadata, ToolDefinition
 
-class WeatherPlugin(PluginBase):
+class WeatherSkill(SkillBase):
     @property
     def metadata(self):
-        return PluginMetadata(
+        return SkillMetadata(
             name="weather",
             version="1.0.0",
             description="Get weather information",
@@ -393,18 +393,18 @@ class WeatherPlugin(PluginBase):
         }
 ```
 
-### Notes Plugin
+### Notes Skill
 
 ```python
 from pathlib import Path
-from aios.plugins import PluginBase, PluginMetadata, ToolDefinition
+from aios.skills import SkillBase, SkillMetadata, ToolDefinition
 
-class NotesPlugin(PluginBase):
+class NotesSkill(SkillBase):
     NOTES_DIR = Path.home() / ".aios_notes"
 
     @property
     def metadata(self):
-        return PluginMetadata(
+        return SkillMetadata(
             name="notes",
             version="1.0.0",
             description="Quick notes management",
@@ -464,21 +464,21 @@ class NotesPlugin(PluginBase):
 
 6. **Document your schema** - Use the `description` field in properties
 
-7. **Test your plugins** - Create unit tests for your handlers
+7. **Test your skills** - Create unit tests for your handlers
 
 ## Troubleshooting
 
-### Plugin not loading
+### Skill not loading
 
-1. Check the file is in a plugin directory
-2. Verify the class inherits from `PluginBase`
-3. Check for syntax errors: `python -m py_compile your_plugin.py`
+1. Check the file is in a skill directory
+2. Verify the class inherits from `SkillBase`
+3. Check for syntax errors: `python -m py_compile your_skill.py`
 
 ### Tool not appearing
 
 1. Verify `get_tools()` returns a list
 2. Check tool name is unique
-3. Ensure plugin is enabled
+3. Ensure skill is enabled
 
 ### Recipe not triggering
 
@@ -486,10 +486,10 @@ class NotesPlugin(PluginBase):
 2. Verify the phrase appears in user input
 3. Test with `recipe.matches("user input")`
 
-## Contributing Plugins
+## Contributing Skills
 
-Share your plugins with the community:
+Share your skills with the community:
 
 1. Create a GitHub repository
 2. Include installation instructions
-3. Add to the AIOS plugin registry (coming soon)
+3. Add to the AIOS skill registry (coming soon)
