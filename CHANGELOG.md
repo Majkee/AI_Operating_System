@@ -5,6 +5,36 @@ All notable changes to AIOS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-01-29
+
+### Changed
+
+#### Improved StreamingDisplay for Long-Running Commands
+Replaced the broken Rich Live+Panel approach with a robust Progress-based display:
+
+- **Progress bar with spinner**: Shows `⚙ Installing ansible ████████ 123 lines 0:00:15`
+- **Elapsed time**: Real-time duration tracking
+- **Line counter**: Shows total lines processed
+- **Output storage**: Stores last 200 lines for later viewing
+- **'show' command**: View last command output after completion
+  - Displays output in a panel with line count
+  - Shows truncation info if output exceeded storage limit
+  - Clears stored output after viewing
+  - Tab completion and `/show` alias supported
+
+**Why the change**: The previous Rich `Live` + `Panel` approach caused display corruption during rapid output (e.g., apt package installations). The new Progress-based approach is rock-solid.
+
+### Added
+
+#### Tests
+- 23 new tests in `tests/test_streaming_display.py`:
+  - `TestStreamingDisplay` (11): initialization, line handling, progress updates, context manager
+  - `TestLastStreamingOutput` (5): storage, retrieval, clearing
+  - `TestShowCommand` (4): command recognition, output display
+  - `TestShowInCommandRegistry` (3): registry entry validation
+
+---
+
 ## [0.10.0] - 2026-01-29
 
 ### Added
