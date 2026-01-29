@@ -93,7 +93,9 @@ class LinuxToolsHandler:
                 return ToolResult(
                     success=False,
                     output="",
-                    user_friendly_message="Okay, I won't do that."
+                    error=f"USER DECLINED: The user chose not to {action} the {service} service. Do not retry or attempt alternative methods.",
+                    user_friendly_message="Okay, I won't do that.",
+                    user_cancelled=True,
                 )
         else:
             return ToolResult(
@@ -225,7 +227,9 @@ class LinuxToolsHandler:
                 return ToolResult(
                     success=False,
                     output="",
-                    user_friendly_message="Okay, I won't kill that process."
+                    error="USER DECLINED: The user chose not to kill this process. Do not retry or attempt alternative methods.",
+                    user_friendly_message="Okay, I won't kill that process.",
+                    user_cancelled=True,
                 )
 
             if pid:
@@ -563,7 +567,9 @@ class LinuxToolsHandler:
                 return ToolResult(
                     success=False,
                     output="",
-                    user_friendly_message="Okay, I won't extract that."
+                    error="USER DECLINED: The user chose not to extract this archive. Do not retry or attempt alternative methods.",
+                    user_friendly_message="Okay, I won't extract that.",
+                    user_cancelled=True,
                 )
 
             if archive_type == "tar.gz":
@@ -723,7 +729,9 @@ class LinuxToolsHandler:
                 return ToolResult(
                     success=False,
                     output="",
-                    user_friendly_message="Okay, I won't add that cron job."
+                    error="USER DECLINED: The user chose not to add this cron job. Do not retry or attempt alternative methods.",
+                    user_friendly_message="Okay, I won't add that cron job.",
+                    user_cancelled=True,
                 )
 
             # Add to crontab (preserving existing)
@@ -766,7 +774,9 @@ class LinuxToolsHandler:
                 return ToolResult(
                     success=False,
                     output="",
-                    user_friendly_message="Okay, I won't remove any cron jobs."
+                    error="USER DECLINED: The user chose not to remove cron jobs. Do not retry or attempt alternative methods.",
+                    user_friendly_message="Okay, I won't remove any cron jobs.",
+                    user_cancelled=True,
                 )
 
             # Remove matching lines from crontab

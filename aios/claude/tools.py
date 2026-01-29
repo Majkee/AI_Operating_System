@@ -17,6 +17,7 @@ class ToolResult:
     error: Optional[str] = None
     requires_followup: bool = False
     user_friendly_message: str = ""
+    user_cancelled: bool = False  # True if user explicitly refused/cancelled the operation
 
 
 # Built-in tool definitions for Claude API

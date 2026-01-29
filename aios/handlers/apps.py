@@ -64,7 +64,9 @@ class AppHandler:
             return ToolResult(
                 success=False,
                 output="",
-                user_friendly_message="Okay, cancelled."
+                error=f"USER DECLINED: The user chose not to {action} {package}. Do not retry or attempt alternative methods.",
+                user_friendly_message="Okay, cancelled.",
+                user_cancelled=True,
             )
 
         # Check if sudo is available

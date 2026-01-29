@@ -103,7 +103,9 @@ class FileToolHandler:
                 return ToolResult(
                     success=False,
                     output="",
-                    user_friendly_message="Okay, I won't save those changes."
+                    error="USER DECLINED: The user chose not to save changes. Do not retry or attempt alternative methods.",
+                    user_friendly_message="Okay, I won't save those changes.",
+                    user_cancelled=True,
                 )
 
         # Write file

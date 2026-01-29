@@ -5,6 +5,26 @@ All notable changes to AIOS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.7] - 2026-01-29
+
+### Fixed
+
+#### User Cancellation Now Respected
+When users decline an operation (answering "n" to confirmation prompts), AIOS no longer attempts alternative methods:
+
+- Added `user_cancelled` flag to `ToolResult` class
+- All confirmation handlers now return explicit "USER DECLINED" error message
+- System prompt updated with "Respecting User Decisions" section
+- Claude instructed to never retry declined operations through alternative tools
+
+**Affected handlers:**
+- `apps.py` - Package installation/removal
+- `commands.py` - Dangerous command execution
+- `files.py` - File write operations
+- `linux.py` - Service management, process killing, archive extraction, cron jobs
+
+---
+
 ## [0.10.6] - 2026-01-29
 
 ### Added

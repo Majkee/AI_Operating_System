@@ -97,7 +97,9 @@ class CommandHandler:
                 return ToolResult(
                     success=False,
                     output="",
-                    user_friendly_message="Okay, I won't do that."
+                    error=f"USER DECLINED: The user chose not to run this command. Do not retry or attempt alternative methods.",
+                    user_friendly_message="Okay, I won't do that.",
+                    user_cancelled=True,
                 )
 
         # Show command in technical mode
