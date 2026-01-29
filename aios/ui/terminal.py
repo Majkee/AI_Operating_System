@@ -94,65 +94,101 @@ class MultiStepProgress:
 
 
 class StreamingDisplay:
-    """Live-updating display for streaming command output.
+    """Progress display for streaming command output.
 
-    Shows the last N lines of output in a panel that replaces itself,
-    keeping the terminal clean during long-running operations.
+    Shows a spinner with progress bar and line count.
+    Stores output and offers to show details after completion.
     """
 
-    def __init__(self, console: Console, description: str = "Running...", max_lines: int = 8):
+    def __init__(self, console: Console, description: str = "Running...", max_lines: int = 200):
         self._console = console
         self._description = description
         self._max_lines = max_lines
         self._lines: deque = deque(maxlen=max_lines)
         self._total_lines = 0
-        self._live: Optional[Live] = None
+        self._progress: Optional[Progress] = None
+        self._task_id = None
+        self._success = True
 
     def __enter__(self):
-        self._live = Live(
-            self._render(),
+        self._progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]{task.description}[/bold blue]"),
+            BarColumn(bar_width=30),
+            TextColumn("[dim]{task.fields[lines]} lines[/dim]"),
+            TimeElapsedColumn(),
             console=self._console,
             transient=True,
-            refresh_per_second=4,
-            vertical_overflow="visible",
         )
-        self._live.__enter__()
+        self._progress.__enter__()
+        self._task_id = self._progress.add_task(
+            self._description,
+            total=None,  # Indeterminate
+            lines=0
+        )
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._live:
-            self._live.__exit__(exc_type, exc_val, exc_tb)
-        self._console.print(
-            f"[green]✓[/green] Completed. ({self._total_lines} lines of output)"
-        )
+        if self._progress:
+            self._progress.__exit__(exc_type, exc_val, exc_tb)
+
+        # Show completion status
+        if exc_type is None:
+            self._console.print(
+                f"[green]✓[/green] Completed. ({self._total_lines} lines)"
+            )
+            # Offer to show details if there was significant output
+            if self._total_lines > 5:
+                self._console.print(
+                    f"[dim]  Type 'show' to view output details[/dim]"
+                )
+                self._store_last_output()
         return False
 
-    def add_line(self, line: str) -> None:
-        """Add a line of output and refresh the display."""
-        # Clean up the line - remove carriage returns and limit length
-        clean_line = line.rstrip('\r\n')
-        # Truncate very long lines to prevent display issues
-        max_width = self._console.width - 6 if self._console.width else 100
-        if len(clean_line) > max_width:
-            clean_line = clean_line[:max_width - 3] + "..."
-        self._lines.append(clean_line)
-        self._total_lines += 1
-        if self._live:
-            self._live.update(self._render())
+    def _store_last_output(self) -> None:
+        """Store output for later retrieval via 'show' command."""
+        # Store in a module-level variable for access
+        global _last_streaming_output
+        _last_streaming_output = {
+            "description": self._description,
+            "lines": list(self._lines),
+            "total": self._total_lines,
+        }
 
-    def _render(self) -> Panel:
-        """Render the current state as a Rich Panel."""
-        if self._lines:
-            body = "\n".join(self._lines)
-        else:
-            body = "[dim]Waiting for output...[/dim]"
-        return Panel(
-            body,
-            title=f"⚙  {self._description}  ({self._total_lines} lines)",
-            border_style="blue",
-            box=ROUNDED,
-            expand=False,
-        )
+    def add_line(self, line: str) -> None:
+        """Add a line of output and update the progress."""
+        clean_line = line.rstrip('\r\n')
+        if clean_line:  # Skip empty lines
+            self._lines.append(clean_line)
+        self._total_lines += 1
+        if self._progress and self._task_id is not None:
+            self._progress.update(
+                self._task_id,
+                lines=self._total_lines
+            )
+
+    def get_output(self) -> str:
+        """Get the stored output (last N lines)."""
+        return "\n".join(self._lines)
+
+    def mark_failed(self) -> None:
+        """Mark the operation as failed."""
+        self._success = False
+
+
+# Module-level storage for last streaming output
+_last_streaming_output: Optional[dict] = None
+
+
+def get_last_streaming_output() -> Optional[dict]:
+    """Get the last streaming output for 'show' command."""
+    return _last_streaming_output
+
+
+def clear_last_streaming_output() -> None:
+    """Clear the stored streaming output."""
+    global _last_streaming_output
+    _last_streaming_output = None
 
 
 class StreamingResponseHandler:

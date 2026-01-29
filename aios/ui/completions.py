@@ -47,9 +47,15 @@ COMMAND_REGISTRY = [
         "has_arg": False,
     },
     {
-        "name": "plugins",
-        "aliases": ["/plugins"],
-        "help": "List loaded plugins and their tools",
+        "name": "show",
+        "aliases": ["/show"],
+        "help": "Show last command output details",
+        "has_arg": False,
+    },
+    {
+        "name": "skills",
+        "aliases": ["/skills"],
+        "help": "List loaded skills and their tools",
         "has_arg": False,
     },
     {
@@ -61,7 +67,7 @@ COMMAND_REGISTRY = [
     {
         "name": "tools",
         "aliases": ["/tools"],
-        "help": "List all available tools (built-in and plugin)",
+        "help": "List all available tools (built-in and skill)",
         "has_arg": False,
     },
     {
@@ -85,7 +91,7 @@ COMMAND_REGISTRY = [
     {
         "name": "credentials",
         "aliases": ["/credentials"],
-        "help": "Manage stored credentials for plugins",
+        "help": "Manage stored credentials for skills",
         "has_arg": False,
     },
     {
@@ -213,7 +219,7 @@ class AIOSCompleter(Completer):
                     start_position=-len(text),
                     display_meta=entry["help"],
                 )
-            # Match aliases (e.g. /plugins)
+            # Match aliases (e.g. /skills)
             for alias in entry["aliases"]:
                 if alias.startswith(word) and alias != entry["name"]:
                     yield Completion(

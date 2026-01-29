@@ -30,7 +30,7 @@ from .context.system import SystemContextGatherer
 from .context.session import SessionManager
 from .safety.guardrails import SafetyGuard
 from .safety.audit import AuditLogger, ActionType
-from .ui.terminal import TerminalUI
+from .ui.terminal import TerminalUI, get_last_streaming_output, clear_last_streaming_output
 from .ui.prompts import ConfirmationPrompt, ConfirmationResult
 from .errors import (
     ErrorBoundary,
@@ -401,6 +401,42 @@ class AIOSShell:
         if tokens_used > 0:
             self.rate_limiter.record_tokens(tokens_used)
 
+    def _show_last_output(self) -> None:
+        """Show the last streaming command output."""
+        output_data = get_last_streaming_output()
+        if output_data is None:
+            self.ui.print_info("No recent command output to show.")
+            return
+
+        lines = output_data.get("lines", [])
+        total = output_data.get("total", 0)
+        description = output_data.get("description", "Command")
+
+        if not lines:
+            self.ui.print_info("No output was captured.")
+            return
+
+        # Show output in a panel
+        from rich.panel import Panel
+        from rich.box import ROUNDED
+
+        # Show how many lines we're displaying vs total
+        if len(lines) < total:
+            title = f"📋 {description} (last {len(lines)} of {total} lines)"
+        else:
+            title = f"📋 {description} ({total} lines)"
+
+        content = "\n".join(lines)
+        self.ui.console.print(Panel(
+            content,
+            title=title,
+            border_style="blue",
+            box=ROUNDED,
+        ))
+
+        # Clear after showing
+        clear_last_streaming_output()
+
     def _get_tool_description(self, tool_name: str, tool_input: dict) -> str:
         """Generate a human-readable description for a tool call."""
         descriptions = {
@@ -475,6 +511,10 @@ class AIOSShell:
 
         if lower_input == "clear":
             self.ui.clear_screen()
+            return True
+
+        if lower_input in ("show", "/show"):
+            self._show_last_output()
             return True
 
         if lower_input == "history":
