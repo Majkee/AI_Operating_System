@@ -113,7 +113,8 @@ class StreamingDisplay:
             self._render(),
             console=self._console,
             transient=True,
-            refresh_per_second=8,
+            refresh_per_second=4,
+            vertical_overflow="visible",
         )
         self._live.__enter__()
         return self
@@ -128,7 +129,13 @@ class StreamingDisplay:
 
     def add_line(self, line: str) -> None:
         """Add a line of output and refresh the display."""
-        self._lines.append(line)
+        # Clean up the line - remove carriage returns and limit length
+        clean_line = line.rstrip('\r\n')
+        # Truncate very long lines to prevent display issues
+        max_width = self._console.width - 6 if self._console.width else 100
+        if len(clean_line) > max_width:
+            clean_line = clean_line[:max_width - 3] + "..."
+        self._lines.append(clean_line)
         self._total_lines += 1
         if self._live:
             self._live.update(self._render())
@@ -144,6 +151,7 @@ class StreamingDisplay:
             title=f"⚙  {self._description}  ({self._total_lines} lines)",
             border_style="blue",
             box=ROUNDED,
+            expand=False,
         )
 
 
