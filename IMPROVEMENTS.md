@@ -11,7 +11,7 @@ Prioritized list of critical improvements and new features, based on a thorough 
 | 1 | Streaming responses from Claude | **DONE** | v0.7.0 | Word-by-word streaming with live Markdown |
 | 2 | Context window management | **DONE** | v0.9.0 | Auto-summarization, token budgets |
 | 3 | Multi-platform package management | TODO | - | Still apt-only |
-| 4 | shell.py decomposition | TODO | - | Still ~1800 lines |
+| 4 | shell.py decomposition | **DONE** | v0.9.0 | 1800→794 lines, handlers/ + commands/ |
 | 5 | Multi-line input | TODO | - | |
 | 6 | Conversation export | TODO | - | |
 | 7 | Undo for file operations | TODO | - | |
@@ -27,20 +27,21 @@ Prioritized list of critical improvements and new features, based on a thorough 
 
 ### Progress
 
-- **Completed:** 5/16 (31%)
-- **Remaining:** 11/16 (69%)
+- **Completed:** 6/16 (37%)
+- **Remaining:** 10/16 (63%)
 
 ### Completed Features (Tier 1 & 3)
 - Streaming responses (biggest UX win)
 - Context window management (prevents crashes)
+- shell.py decomposition (maintainability)
 - Exponential backoff & circuit breaker (reliability)
 - Audit log path fix (non-root users)
 - Multi-step progress awareness (polish)
 
 ### High Priority Remaining
-- shell.py decomposition (#4) — makes future development easier
 - Multi-line input (#5) — small change, big usability
 - Package manager abstraction (#3) — expands user base
+- Ctrl+R history search (#13) — one-line change
 
 ---
 
@@ -96,14 +97,25 @@ Prioritized list of critical improvements and new features, based on a thorough 
 
 ### 4. shell.py is an 1800-line monolith
 
+> **STATUS: IMPLEMENTED in v0.9.0**
+
 **Impact:** Every change is risky; every new feature is harder to add.
 
 Every concern lives in one file: tool handlers, command routing, plugin wiring, cache config, session management, Claude Code integration, streaming execution.
 
-**Solution:** Extract into focused modules:
-- `aios/handlers/` — one module per tool handler group (files, commands, system, apps)
-- `aios/commands/` — shell command dispatch (help, stats, sessions, plugins, etc.)
-- `aios/shell.py` — reduced to orchestration only (~300 lines)
+**Implementation:**
+- `aios/shell.py` reduced from ~1800 to 794 lines (56% reduction)
+- `aios/handlers/` — tool handler modules:
+  - `apps.py` — application management
+  - `commands.py` — command execution
+  - `files.py` — file operations
+  - `linux.py` — Linux system tools (35KB, largest handler)
+  - `system.py` — system information
+- `aios/commands/` — shell command dispatch:
+  - `code.py` — Claude Code integration
+  - `config.py` — configuration management
+  - `display.py` — display/output commands
+  - `sessions.py` — session management
 
 ---
 
@@ -290,7 +302,7 @@ When Claude chains multiple tool calls (e.g. "organize my downloads" triggers 10
 |----------|------|--------|-----------|
 | ~~1~~ | ~~Streaming responses (#1)~~ | **DONE** | ~~Biggest UX win, lowest risk~~ |
 | ~~2~~ | ~~Conversation history management (#2)~~ | **DONE** | ~~Prevents crashes in real usage~~ |
-| 3 | shell.py decomposition (#4) | TODO | Makes everything else easier to build |
+| ~~3~~ | ~~shell.py decomposition (#4)~~ | **DONE** | ~~Makes everything else easier to build~~ |
 | 4 | Multi-line input (#5) | TODO | Small change, big usability gain |
 | 5 | Package manager abstraction (#3) | TODO | Expands the user base significantly |
 | 6 | Configurable system prompt (#14) | TODO | Low effort, high customization value |
@@ -306,7 +318,7 @@ When Claude chains multiple tool calls (e.g. "organize my downloads" triggers 10
 | 16 | Windows/macOS support (#10) | TODO | Large scope, lower priority |
 
 ### Next Up (Recommended)
-1. **shell.py decomposition (#4)** — Makes all future work easier
-2. **Multi-line input (#5)** — Quick win, big usability improvement
-3. **Ctrl+R history search (#13)** — One-line change
-4. **Configurable system prompt (#14)** — Low effort, high value
+1. **Multi-line input (#5)** — Quick win, big usability improvement
+2. **Ctrl+R history search (#13)** — One-line change
+3. **Configurable system prompt (#14)** — Low effort, high value
+4. **Package manager abstraction (#3)** — Expands user base
