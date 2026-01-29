@@ -729,18 +729,37 @@ class AIOSShell:
         self.running = True
         self._notify_skills_session_start()
 
-        # Show welcome
+        # Show welcome with system info
         self.ui.clear_screen()
-        self.ui.print_welcome()
 
-        # Show loaded skills info
+        # Gather info for welcome screen
         skill_count = len(self.skill_manager.list_skills())
-        if skill_count > 0:
-            tool_count = len(self.skill_manager.get_all_tools())
-            recipe_count = len(self.skill_manager.get_all_recipes())
-            self.ui.print_info(
-                f"Skills: {skill_count} loaded, {tool_count} tools, {recipe_count} recipes available"
-            )
+        tool_count = len(self.skill_manager.get_all_tools())
+        recipe_count = len(self.skill_manager.get_all_recipes())
+
+        # Get recent commands from history (excluding shell commands)
+        recent_commands = []
+        try:
+            history_strings = list(self.history.get_strings())
+            seen = set()
+            for cmd in reversed(history_strings):
+                cmd = cmd.strip()
+                # Skip shell commands and duplicates
+                if cmd and not cmd.startswith(("/", "exit", "quit", "help", "clear")):
+                    if cmd.lower() not in seen:
+                        seen.add(cmd.lower())
+                        recent_commands.append(cmd)
+                        if len(recent_commands) >= 5:
+                            break
+        except Exception:
+            pass  # History not available yet
+
+        self.ui.print_welcome(
+            skills_count=skill_count,
+            tools_count=tool_count,
+            recipes_count=recipe_count,
+            recent_commands=recent_commands if recent_commands else None,
+        )
 
         # Main loop
         while self.running:

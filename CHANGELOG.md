@@ -5,6 +5,36 @@ All notable changes to AIOS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.6] - 2026-01-29
+
+### Added
+
+#### Enhanced Two-Column Welcome Screen
+New Claude Code-style welcome screen with rich two-column layout:
+
+**Left column - Examples:**
+- Categorized examples: Files & Folders, System, Tasks, Info
+- Color-coded categories with bullet points
+- Real-world use cases to inspire users
+
+**Right column - System info:**
+- ASCII art "AIOS" logo with version
+- Skills/tools/recipes count summary
+- Keyboard shortcuts reference (Ctrl+R, Ctrl+B, Tab, Esc+Enter)
+- Recent commands list (last 4 user queries)
+
+**Bottom row - Commands:**
+- Full-width popular commands footer
+- Quick access to: help, skills, stats, history, sessions, config, exit
+
+### Changed
+
+- `TerminalUI.print_welcome()` now accepts parameters for skills, tools, recipes, and recent history
+- Shell passes system info to welcome screen instead of separate print_info call
+- Updated `__version__` in `aios/__init__.py` to match pyproject.toml
+
+---
+
 ## [0.10.5] - 2026-01-29
 
 ### Added

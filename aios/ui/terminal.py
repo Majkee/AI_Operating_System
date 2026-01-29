@@ -274,19 +274,135 @@ class TerminalUI:
         self.show_technical = config.ui.show_technical_details
         self.show_commands = config.ui.show_commands
 
-    def print_welcome(self) -> None:
-        """Print welcome message."""
+    def print_welcome(
+        self,
+        version: str = "",
+        skills_count: int = 0,
+        tools_count: int = 0,
+        recipes_count: int = 0,
+        recent_commands: Optional[List[str]] = None,
+    ) -> None:
+        """Print enhanced welcome message with system info."""
+        from rich.console import Group
+        from .. import __version__
+        ver = version or __version__
+
+        # === LEFT COLUMN: Logo, info, shortcuts, recent ===
+        left = Text()
+
+        # ASCII art logo
+        left.append(" ╔═╗", style="bold cyan")
+        left.append("╦", style="bold blue")
+        left.append("╔═╗", style="bold cyan")
+        left.append("╔═╗", style="bold green")
+        left.append(f"  v{ver}\n", style="dim")
+        left.append(" ╠═╣", style="bold cyan")
+        left.append("║", style="bold blue")
+        left.append("║ ║", style="bold cyan")
+        left.append("╚═╗", style="bold green")
+        left.append("  AI-powered OS Interface\n", style="dim")
+        left.append(" ╩ ╩", style="bold cyan")
+        left.append("╩", style="bold blue")
+        left.append("╚═╝", style="bold cyan")
+        left.append("╚═╝\n\n", style="bold green")
+
+        # Skills info
+        if skills_count > 0 or tools_count > 0:
+            left.append(" + ", style="cyan")
+            parts = []
+            if skills_count > 0:
+                parts.append(f"{skills_count} skill{'s' if skills_count != 1 else ''}")
+            if tools_count > 0:
+                parts.append(f"{tools_count} tools")
+            if recipes_count > 0:
+                parts.append(f"{recipes_count} recipes")
+            left.append(" / ".join(parts) + "\n\n", style="white")
+
+        # Keyboard shortcuts
+        left.append(" Shortcuts\n", style="bold yellow")
+        left.append(" Ctrl+R ", style="cyan")
+        left.append("history search\n", style="dim")
+        left.append(" Ctrl+B ", style="cyan")
+        left.append("background tasks\n", style="dim")
+        left.append(" Tab    ", style="cyan")
+        left.append("auto-complete\n", style="dim")
+        left.append(" Esc+En ", style="cyan")
+        left.append("multi-line submit\n", style="dim")
+
+        # Recent commands
+        if recent_commands:
+            left.append("\n", style="")
+            left.append(" Recent\n", style="bold yellow")
+            for cmd in recent_commands[:4]:
+                display_cmd = cmd[:24] + ".." if len(cmd) > 24 else cmd
+                left.append(f" > {display_cmd}\n", style="dim")
+
+        # === RIGHT COLUMN: Examples ===
+        right = Text()
+        right.append(" What can AIOS do?\n\n", style="bold yellow")
+
+        examples = [
+            ("cyan", "Files & Folders", [
+                "Show my recent downloads",
+                "Find large files over 1GB",
+                "Organize my Documents",
+            ]),
+            ("green", "System", [
+                "What's using my disk?",
+                "Show running processes",
+                "Check system performance",
+            ]),
+            ("yellow", "Tasks", [
+                "Install VS Code",
+                "Update all packages",
+                "Clean up temp files",
+            ]),
+            ("magenta", "Info", [
+                "What's my IP address?",
+                "Show network connections",
+                "List USB devices",
+            ]),
+        ]
+
+        for color, category, items in examples:
+            right.append(" * ", style=f"bold {color}")
+            right.append(f"{category}\n", style="bold white")
+            for item in items:
+                right.append("   - ", style="dim")
+                right.append(f"{item}\n", style="dim")
+            right.append("\n", style="")
+
+        # === BOTTOM: Popular commands (full width) ===
+        bottom = Text()
+
+        commands = ["help", "skills", "stats", "history", "sessions", "config", "exit"]
+
+        bottom.append("  ", style="")
+        for i, cmd in enumerate(commands):
+            bottom.append(cmd, style="cyan")
+            if i < len(commands) - 1:
+                bottom.append("  ", style="dim")
+        bottom.append("\n", style="")
+
+        # Build two-column layout with separator using Table
+        layout = Table.grid(expand=True)
+        layout.add_column(ratio=1)
+        layout.add_column(width=3)  # Separator column
+        layout.add_column(ratio=1)
+
+        # Create vertical separator
+        sep = Text()
+        for _ in range(22):
+            sep.append(" | \n", style="dim blue")
+
+        layout.add_row(left, sep, right)
+
+        # Create the panel with columns and bottom section
         welcome = Panel(
-            "[bold green]Welcome to AIOS[/bold green]\n\n"
-            "I'm your AI assistant. Just tell me what you'd like to do!\n\n"
-            "[dim]Examples:[/dim]\n"
-            "  • \"Show me my photos\"\n"
-            "  • \"What's using up my disk space?\"\n"
-            "  • \"Help me organize my Downloads folder\"\n\n"
-            "[dim]Type 'exit' or 'quit' to leave, 'help' for more options[/dim]",
-            title="🖥️  AIOS",
+            Group(layout, bottom),
             border_style="blue",
-            box=ROUNDED
+            box=ROUNDED,
+            padding=(0, 1),
         )
         self.console.print(welcome)
         self.console.print()
