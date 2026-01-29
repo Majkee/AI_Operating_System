@@ -4,7 +4,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/aiosys.svg)](https://pypi.org/project/aiosys/)
 [![Docker Hub](https://img.shields.io/docker/v/majkee/aios?label=docker%20hub)](https://hub.docker.com/r/majkee/aios)
-[![Tests](https://img.shields.io/badge/tests-573%20passed-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-608%20passed-brightgreen.svg)](#testing)
 [![Code style: PEP8](https://img.shields.io/badge/code%20style-pep8-green.svg)](https://www.python.org/dev/peps/pep-0008/)
 
 **Talk to your Linux system in plain English.** AIOS is a natural language interface powered by Claude that makes Linux accessible to everyone -- no command line experience required.
@@ -398,7 +398,7 @@ auto_detect_sensitivity = "moderate"  # high, moderate, low
 
 ## Testing
 
-AIOS has a comprehensive test suite with 573 tests covering all major systems.
+AIOS has a comprehensive test suite with 608 tests covering all major systems.
 
 ```bash
 # Install test dependencies
@@ -438,6 +438,7 @@ pytest tests/test_ratelimit.py -v
 | Context Window | 30 |
 | Multi-Step Progress | 13 |
 | Streaming Display | 23 |
+| Retry / Circuit Breaker | 35 |
 
 CI runs automatically on every push and PR. See [CI.md](CI.md) for details.
 

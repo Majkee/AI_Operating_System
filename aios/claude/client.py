@@ -16,6 +16,7 @@ from anthropic.types import Message, ToolUseBlock, TextBlock
 
 from .tools import ToolHandler, ToolResult
 from ..config import get_config
+from ..errors import ErrorRecovery, CircuitBreaker
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +219,27 @@ class ClaudeClient:
         self._conversation_summary: Optional[str] = None
         self._summarized_message_count: int = 0  # How many messages were summarized
 
+        # Retry and circuit breaker configuration
+        self._circuit_breaker = ErrorRecovery.get_circuit_breaker(
+            name="claude_api",
+            failure_threshold=5,
+            recovery_timeout=60.0
+        )
+        self._retry_config = {
+            "max_attempts": 3,
+            "base_delay": 1.0,
+            "max_delay": 30.0,
+            "jitter": True,
+        }
+        # Exceptions that should trigger retry (network/transient errors)
+        self._retryable_exceptions = (
+            anthropic.APIConnectionError,
+            anthropic.RateLimitError,
+            anthropic.InternalServerError,
+            ConnectionError,
+            TimeoutError,
+        )
+
     def _build_messages(self, user_input: str) -> list[dict]:
         """Build the messages list for the API call."""
         messages = self.conversation_history.copy()
@@ -381,6 +403,63 @@ class ClaudeClient:
                 on_text(text)
             return stream.get_final_message()
 
+    def _make_api_call(
+        self,
+        system: str,
+        messages: list,
+        on_text: Optional[Callable[[str], None]] = None
+    ) -> "Message":
+        """
+        Make an API call with retry and circuit breaker.
+
+        Args:
+            system: System prompt
+            messages: Conversation messages
+            on_text: Optional callback for streaming
+
+        Returns:
+            API response message
+
+        Raises:
+            Exception: If all retries fail or circuit breaker is open
+        """
+        def api_call() -> Message:
+            if on_text is not None:
+                return self._stream_request(system, messages, on_text)
+            else:
+                return self.client.messages.create(
+                    model=self.model,
+                    max_tokens=self.max_tokens,
+                    system=system,
+                    tools=self.tool_handler.get_all_tools(),
+                    messages=messages
+                )
+
+        def on_retry(attempt: int, exc: Exception) -> None:
+            logger.warning(
+                f"API call failed (attempt {attempt}), retrying: {type(exc).__name__}: {exc}"
+            )
+
+        result = ErrorRecovery.retry(
+            func=api_call,
+            max_attempts=self._retry_config["max_attempts"],
+            base_delay=self._retry_config["base_delay"],
+            max_delay=self._retry_config["max_delay"],
+            jitter=self._retry_config["jitter"],
+            circuit_breaker=self._circuit_breaker,
+            retryable_exceptions=self._retryable_exceptions,
+            on_retry=on_retry
+        )
+
+        if result.is_err:
+            # Re-raise as exception for callers to handle
+            error = result.error
+            if error.original_exception:
+                raise error.original_exception
+            raise RuntimeError(error.technical_message)
+
+        return result.unwrap()
+
     def _process_response(self, response: Message) -> AssistantResponse:
         """Process Claude's response and extract text and tool calls."""
         text_parts = []
@@ -427,6 +506,10 @@ class ClaudeClient:
 
         Returns:
             AssistantResponse with text and any tool calls
+
+        Note:
+            Uses exponential backoff with jitter for transient failures.
+            Circuit breaker prevents hammering the API after repeated failures.
         """
         # Check and manage context window before making request
         self._maybe_manage_context()
@@ -434,17 +517,8 @@ class ClaudeClient:
         messages = self._build_messages(user_input)
         system = self._build_system_prompt(system_context)
 
-        # Make API request (streaming or blocking)
-        if on_text is not None:
-            response = self._stream_request(system, messages, on_text)
-        else:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                system=system,
-                tools=self.tool_handler.get_all_tools(),
-                messages=messages
-            )
+        # Make API request with retry and circuit breaker
+        response = self._make_api_call(system, messages, on_text)
 
         # Add user message to history
         self.conversation_history.append({
@@ -474,6 +548,10 @@ class ClaudeClient:
 
         Returns:
             AssistantResponse with text and any tool calls
+
+        Note:
+            Uses exponential backoff with jitter for transient failures.
+            Circuit breaker prevents hammering the API after repeated failures.
         """
         # Check and manage context window before making request
         self._maybe_manage_context()
@@ -495,17 +573,8 @@ class ClaudeClient:
 
         system = self._build_system_prompt(system_context)
 
-        # Make API request (streaming or blocking)
-        if on_text is not None:
-            response = self._stream_request(system, self.conversation_history, on_text)
-        else:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                system=system,
-                tools=self.tool_handler.get_all_tools(),
-                messages=self.conversation_history
-            )
+        # Make API request with retry and circuit breaker
+        response = self._make_api_call(system, self.conversation_history, on_text)
 
         assistant_response = self._process_response(response)
         self._store_assistant_history(assistant_response)
@@ -562,3 +631,12 @@ class ClaudeClient:
             "summarize_threshold": self.summarize_threshold,
             "min_recent_messages": self.min_recent_messages,
         }
+
+    def get_circuit_breaker_stats(self) -> dict[str, Any]:
+        """Get circuit breaker statistics for monitoring."""
+        return self._circuit_breaker.get_stats()
+
+    def reset_circuit_breaker(self) -> None:
+        """Reset the circuit breaker to closed state."""
+        self._circuit_breaker.reset()
+        logger.info("Circuit breaker reset to closed state")

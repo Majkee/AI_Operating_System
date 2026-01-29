@@ -9,7 +9,10 @@ Provides:
 """
 
 import sys
+import time
+import random
 import traceback
+import threading
 from typing import Optional, Callable, Any, TypeVar, Generic
 from dataclasses import dataclass, field
 from enum import Enum
@@ -385,37 +388,288 @@ def safe_execute(
     return Result.ok(result)
 
 
+class CircuitBreaker:
+    """
+    Circuit breaker pattern to prevent hammering a failing service.
+
+    States:
+    - CLOSED: Normal operation, requests pass through
+    - OPEN: Circuit is open, requests fail immediately without calling the service
+    - HALF_OPEN: Testing if service has recovered, allows limited requests
+
+    Thread-safe implementation.
+    """
+
+    # States
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
+
+    def __init__(
+        self,
+        failure_threshold: int = 5,
+        recovery_timeout: float = 60.0,
+        half_open_max_calls: int = 1
+    ):
+        """
+        Initialize the circuit breaker.
+
+        Args:
+            failure_threshold: Number of consecutive failures before opening circuit
+            recovery_timeout: Seconds to wait before attempting recovery (half-open)
+            half_open_max_calls: Number of test calls allowed in half-open state
+        """
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.half_open_max_calls = half_open_max_calls
+
+        self._state = self.CLOSED
+        self._failure_count = 0
+        self._last_failure_time: Optional[float] = None
+        self._half_open_calls = 0
+        self._lock = threading.Lock()
+
+    @property
+    def state(self) -> str:
+        """Get current circuit state."""
+        with self._lock:
+            return self._get_state_unlocked()
+
+    def _get_state_unlocked(self) -> str:
+        """Get state without lock (must be called with lock held)."""
+        if self._state == self.OPEN:
+            # Check if recovery timeout has elapsed
+            if self._last_failure_time is not None:
+                elapsed = time.time() - self._last_failure_time
+                if elapsed >= self.recovery_timeout:
+                    self._state = self.HALF_OPEN
+                    self._half_open_calls = 0
+        return self._state
+
+    def allow_request(self) -> bool:
+        """Check if a request should be allowed through."""
+        with self._lock:
+            state = self._get_state_unlocked()
+
+            if state == self.CLOSED:
+                return True
+
+            if state == self.HALF_OPEN:
+                if self._half_open_calls < self.half_open_max_calls:
+                    self._half_open_calls += 1
+                    return True
+                return False
+
+            # OPEN state
+            return False
+
+    def record_success(self) -> None:
+        """Record a successful call."""
+        with self._lock:
+            if self._state == self.HALF_OPEN:
+                # Success in half-open state, close the circuit
+                self._state = self.CLOSED
+            self._failure_count = 0
+            self._last_failure_time = None
+            self._half_open_calls = 0
+
+    def record_failure(self) -> None:
+        """Record a failed call."""
+        with self._lock:
+            self._failure_count += 1
+            self._last_failure_time = time.time()
+
+            if self._state == self.HALF_OPEN:
+                # Failure in half-open state, reopen the circuit
+                self._state = self.OPEN
+            elif self._failure_count >= self.failure_threshold:
+                self._state = self.OPEN
+
+    def reset(self) -> None:
+        """Reset the circuit breaker to closed state."""
+        with self._lock:
+            self._state = self.CLOSED
+            self._failure_count = 0
+            self._last_failure_time = None
+            self._half_open_calls = 0
+
+    def get_stats(self) -> dict:
+        """Get circuit breaker statistics."""
+        with self._lock:
+            return {
+                "state": self._get_state_unlocked(),
+                "failure_count": self._failure_count,
+                "failure_threshold": self.failure_threshold,
+                "recovery_timeout": self.recovery_timeout,
+                "last_failure_time": self._last_failure_time,
+            }
+
+
+class CircuitOpenError(AIOSError):
+    """Raised when circuit breaker is open and request is rejected."""
+
+    def __init__(self, message: str = "Service temporarily unavailable", **kwargs):
+        super().__init__(
+            message,
+            category=ErrorCategory.API,
+            severity=ErrorSeverity.MEDIUM,
+            user_message="The service is temporarily unavailable. Please try again later.",
+            suggested_action="Wait a moment and try again.",
+            **kwargs
+        )
+
+
+def calculate_backoff(
+    attempt: int,
+    base_delay: float = 1.0,
+    max_delay: float = 60.0,
+    jitter: bool = True
+) -> float:
+    """
+    Calculate exponential backoff delay with optional jitter.
+
+    Args:
+        attempt: Current attempt number (1-based)
+        base_delay: Base delay in seconds
+        max_delay: Maximum delay cap in seconds
+        jitter: Whether to add randomized jitter
+
+    Returns:
+        Delay in seconds
+    """
+    # Exponential backoff: base_delay * 2^(attempt-1)
+    delay = base_delay * (2 ** (attempt - 1))
+
+    # Cap at maximum delay
+    delay = min(delay, max_delay)
+
+    # Add jitter (±25% randomization) to prevent thundering herd
+    if jitter:
+        jitter_range = delay * 0.25
+        delay = delay + random.uniform(-jitter_range, jitter_range)
+
+    return max(0.0, delay)
+
+
 class ErrorRecovery:
     """
-    Provides error recovery strategies.
+    Provides error recovery strategies with exponential backoff and circuit breaker.
     """
+
+    # Shared circuit breakers by name
+    _circuit_breakers: dict[str, CircuitBreaker] = {}
+    _cb_lock = threading.Lock()
+
+    @classmethod
+    def get_circuit_breaker(
+        cls,
+        name: str,
+        failure_threshold: int = 5,
+        recovery_timeout: float = 60.0
+    ) -> CircuitBreaker:
+        """
+        Get or create a named circuit breaker.
+
+        Args:
+            name: Identifier for the circuit breaker
+            failure_threshold: Failures before opening
+            recovery_timeout: Seconds before recovery attempt
+
+        Returns:
+            CircuitBreaker instance
+        """
+        with cls._cb_lock:
+            if name not in cls._circuit_breakers:
+                cls._circuit_breakers[name] = CircuitBreaker(
+                    failure_threshold=failure_threshold,
+                    recovery_timeout=recovery_timeout
+                )
+            return cls._circuit_breakers[name]
 
     @staticmethod
     def retry(
         func: Callable[[], T],
         max_attempts: int = 3,
-        on_retry: Optional[Callable[[int, Exception], None]] = None
+        on_retry: Optional[Callable[[int, Exception], None]] = None,
+        base_delay: float = 1.0,
+        max_delay: float = 60.0,
+        jitter: bool = True,
+        circuit_breaker: Optional[CircuitBreaker] = None,
+        retryable_exceptions: Optional[tuple] = None
     ) -> Result[T]:
         """
-        Retry a function multiple times on failure.
+        Retry a function with exponential backoff and optional circuit breaker.
 
         Args:
             func: Function to execute
             max_attempts: Maximum number of attempts
             on_retry: Callback for each retry (attempt number, exception)
+            base_delay: Base delay for exponential backoff (seconds)
+            max_delay: Maximum delay cap (seconds)
+            jitter: Whether to add randomized jitter to delays
+            circuit_breaker: Optional circuit breaker instance
+            retryable_exceptions: Tuple of exception types to retry on.
+                                  If None, retries on all exceptions.
 
         Returns:
             Result of the operation
         """
         last_error = None
 
+        # Check circuit breaker before starting
+        if circuit_breaker and not circuit_breaker.allow_request():
+            stats = circuit_breaker.get_stats()
+            return Result.err(ErrorContext(
+                category=ErrorCategory.API,
+                severity=ErrorSeverity.MEDIUM,
+                operation="retry",
+                user_message="Service temporarily unavailable due to repeated failures.",
+                technical_message=f"Circuit breaker open (failures: {stats['failure_count']})",
+                recoverable=True,
+                suggested_action=f"Wait {stats['recovery_timeout']}s and try again."
+            ))
+
         for attempt in range(1, max_attempts + 1):
             try:
-                return Result.ok(func())
+                result = func()
+
+                # Record success with circuit breaker
+                if circuit_breaker:
+                    circuit_breaker.record_success()
+
+                return Result.ok(result)
+
             except Exception as e:
                 last_error = e
+
+                # Check if this exception type is retryable
+                if retryable_exceptions and not isinstance(e, retryable_exceptions):
+                    # Non-retryable exception, fail immediately
+                    if circuit_breaker:
+                        circuit_breaker.record_failure()
+                    break
+
+                # Record failure with circuit breaker
+                if circuit_breaker:
+                    circuit_breaker.record_failure()
+
+                    # Check if circuit just opened
+                    if not circuit_breaker.allow_request():
+                        break  # Stop retrying if circuit opened
+
+                # Notify retry callback
                 if on_retry and attempt < max_attempts:
                     on_retry(attempt, e)
+
+                # Apply backoff delay (except after last attempt)
+                if attempt < max_attempts:
+                    delay = calculate_backoff(
+                        attempt,
+                        base_delay=base_delay,
+                        max_delay=max_delay,
+                        jitter=jitter
+                    )
+                    time.sleep(delay)
 
         return Result.err(ErrorContext(
             category=ErrorCategory.UNKNOWN,

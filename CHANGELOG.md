@@ -5,6 +5,47 @@ All notable changes to AIOS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.3] - 2026-01-29
+
+### Added
+
+#### Exponential Backoff and Circuit Breaker
+Network issues and rate limits now trigger intelligent retry with exponential backoff instead of immediate failures:
+
+**Exponential Backoff with Jitter**:
+- `ErrorRecovery.retry()` now supports backoff between attempts
+- Base delay doubles with each retry: 1s → 2s → 4s → 8s...
+- Configurable `max_delay` cap (default: 60s)
+- Random jitter (±25%) prevents thundering herd problems
+
+**Circuit Breaker Pattern**:
+- After N consecutive failures (default: 5), circuit "opens"
+- Open circuit rejects requests immediately without calling the API
+- After recovery timeout (default: 60s), circuit enters "half-open" state
+- Single test request allowed in half-open; success closes circuit, failure reopens it
+- Thread-safe implementation for concurrent use
+
+**ClaudeClient Integration**:
+- `send_message()` and `send_tool_results()` now use retry with circuit breaker
+- Retries on: `APIConnectionError`, `RateLimitError`, `InternalServerError`, `ConnectionError`, `TimeoutError`
+- Non-retryable exceptions (e.g., `AuthenticationError`) fail immediately
+- `get_circuit_breaker_stats()` — view circuit state for debugging
+- `reset_circuit_breaker()` — manually reset to closed state
+
+**Files changed:**
+- `aios/errors.py` — `CircuitBreaker` class, `calculate_backoff()`, enhanced `ErrorRecovery.retry()`
+- `aios/claude/client.py` — `_make_api_call()` helper, circuit breaker integration
+- `tests/test_retry.py` — 35 new tests
+
+**Configuration (client defaults):**
+- `max_attempts`: 3
+- `base_delay`: 1.0s
+- `max_delay`: 30.0s
+- `failure_threshold`: 5
+- `recovery_timeout`: 60.0s
+
+---
+
 ## [0.10.2] - 2026-01-29
 
 ### Fixed
