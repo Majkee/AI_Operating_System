@@ -567,6 +567,15 @@ Just talk to me naturally! Here are some things you can ask:
 - **clear** - Clear the screen
 - **history** - Show session history
 - **help** - Show this message
+- **multiline** / **ml** - Toggle multi-line input mode
+- **show** - View last command output details
+
+## Keyboard Shortcuts
+
+- **Ctrl+R** - Search command history
+- **Ctrl+B** - Open background task browser
+- **Tab** - Auto-complete commands
+- **Esc+Enter** - Submit in multi-line mode
 
 ## Configuration
 

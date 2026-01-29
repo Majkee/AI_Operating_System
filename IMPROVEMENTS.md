@@ -12,7 +12,7 @@ Prioritized list of critical improvements and new features, based on a thorough 
 | 2 | Context window management | **DONE** | v0.9.0 | Auto-summarization, token budgets |
 | 3 | Multi-platform package management | TODO | - | Still apt-only |
 | 4 | shell.py decomposition | **DONE** | v0.9.0 | 1800→794 lines, handlers/ + commands/ |
-| 5 | Multi-line input | TODO | - | |
+| 5 | Multi-line input | **DONE** | v0.10.5 | Toggle mode, Esc+Enter to submit |
 | 6 | Conversation export | TODO | - | |
 | 7 | Undo for file operations | TODO | - | |
 | 8 | Clipboard integration | TODO | - | |
@@ -20,28 +20,29 @@ Prioritized list of critical improvements and new features, based on a thorough 
 | 10 | Windows/macOS support | PARTIAL | - | Some fixes, still POSIX-heavy |
 | 11 | Audit log path fix | **DONE** | v0.10.2 | Now uses ~/.config/aios/logs/ |
 | 12 | Richer Markdown rendering | TODO | - | |
-| 13 | Ctrl+R history search | TODO | - | |
+| 13 | Ctrl+R history search | **DONE** | v0.10.5 | enable_history_search=True |
 | 14 | Configurable system prompt | TODO | - | |
 | 15 | File/image attachment | TODO | - | |
 | 16 | Multi-step progress awareness | **DONE** | v0.10.0 | Step X/Y display for tool chains |
 
 ### Progress
 
-- **Completed:** 6/16 (37%)
-- **Remaining:** 10/16 (63%)
+- **Completed:** 8/16 (50%)
+- **Remaining:** 8/16 (50%)
 
-### Completed Features (Tier 1 & 3)
+### Completed Features (Tier 1-4)
 - Streaming responses (biggest UX win)
 - Context window management (prevents crashes)
 - shell.py decomposition (maintainability)
 - Exponential backoff & circuit breaker (reliability)
 - Audit log path fix (non-root users)
 - Multi-step progress awareness (polish)
+- Multi-line input (usability)
+- Ctrl+R history search (usability)
 
 ### High Priority Remaining
-- Multi-line input (#5) — small change, big usability
 - Package manager abstraction (#3) — expands user base
-- Ctrl+R history search (#13) — one-line change
+- Configurable system prompt (#14) — low effort, high value
 
 ---
 
@@ -123,13 +124,18 @@ Every concern lives in one file: tool handlers, command routing, plugin wiring, 
 
 ### 5. Multi-line input
 
+> **STATUS: IMPLEMENTED in v0.10.5**
+
 **Impact:** Users can't paste code blocks or write detailed instructions.
 
 `prompt_toolkit` supports multi-line input (Alt+Enter or a toggle) but it's not configured. Users wanting to say "here's my error log, explain it" have to paste everything on one line.
 
-**Files to modify:**
-- `aios/shell.py` — configure `PromptSession` with `multiline=True` or Alt+Enter toggle
-- `aios/ui/terminal.py` — update help text to mention the keybinding
+**Implementation:**
+- `aios/shell.py` — `_multiline_mode` toggle, `Condition` filter for dynamic multiline
+- `aios/shell.py` — `escape+enter` key binding for submission in multi-line mode
+- `aios/shell.py` — `multiline`, `/multiline`, `ml`, `/ml` command handler
+- `aios/ui/completions.py` — added multiline to `COMMAND_REGISTRY`
+- `aios/ui/terminal.py` — added Keyboard Shortcuts section to help text
 
 ---
 
@@ -250,10 +256,13 @@ Affected areas:
 
 ### 13. Command history search (Ctrl+R)
 
+> **STATUS: IMPLEMENTED in v0.10.5**
+
 `prompt_toolkit` supports reverse history search out of the box but it's not enabled. Users familiar with shell Ctrl+R expect this to work.
 
-**Files to modify:**
-- `aios/shell.py` — enable `enable_history_search=True` on `PromptSession`
+**Implementation:**
+- `aios/shell.py` — `enable_history_search=True` on `PromptSession`
+- `aios/ui/terminal.py` — documented in Keyboard Shortcuts help section
 
 ---
 
@@ -303,13 +312,13 @@ When Claude chains multiple tool calls (e.g. "organize my downloads" triggers 10
 | ~~1~~ | ~~Streaming responses (#1)~~ | **DONE** | ~~Biggest UX win, lowest risk~~ |
 | ~~2~~ | ~~Conversation history management (#2)~~ | **DONE** | ~~Prevents crashes in real usage~~ |
 | ~~3~~ | ~~shell.py decomposition (#4)~~ | **DONE** | ~~Makes everything else easier to build~~ |
-| 4 | Multi-line input (#5) | TODO | Small change, big usability gain |
+| ~~4~~ | ~~Multi-line input (#5)~~ | **DONE** | ~~Small change, big usability gain~~ |
 | 5 | Package manager abstraction (#3) | TODO | Expands the user base significantly |
 | 6 | Configurable system prompt (#14) | TODO | Low effort, high customization value |
 | ~~7~~ | ~~Exponential backoff (#9)~~ | **DONE** | ~~Reliability improvement~~ |
 | 8 | Undo command (#7) | TODO | Completes an existing half-built feature |
 | 9 | Conversation export (#6) | TODO | Users need to save useful responses |
-| 10 | Ctrl+R history search (#13) | TODO | One-line config change |
+| ~~10~~ | ~~Ctrl+R history search (#13)~~ | **DONE** | ~~One-line config change~~ |
 | 11 | Clipboard integration (#8) | TODO | Quality-of-life feature |
 | ~~12~~ | ~~Audit log path fix (#11)~~ | **DONE** | ~~Quick config fix~~ |
 | 13 | Image support (#15) | TODO | Differentiator for non-technical users |
@@ -318,7 +327,7 @@ When Claude chains multiple tool calls (e.g. "organize my downloads" triggers 10
 | 16 | Windows/macOS support (#10) | TODO | Large scope, lower priority |
 
 ### Next Up (Recommended)
-1. **Multi-line input (#5)** — Quick win, big usability improvement
-2. **Ctrl+R history search (#13)** — One-line change
-3. **Configurable system prompt (#14)** — Low effort, high value
-4. **Package manager abstraction (#3)** — Expands user base
+1. **Configurable system prompt (#14)** — Low effort, high value
+2. **Package manager abstraction (#3)** — Expands user base
+3. **Undo command (#7)** — Completes existing half-built feature
+4. **Conversation export (#6)** — Users need to save useful responses

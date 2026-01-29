@@ -5,6 +5,33 @@ All notable changes to AIOS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.5] - 2026-01-29
+
+### Added
+
+#### Multi-line Input Mode (#5)
+Users can now paste code blocks and write detailed multi-line instructions:
+
+- **Toggle with command**: `multiline`, `/multiline`, `ml`, or `/ml`
+- **Submit in multi-line mode**: Press `Escape+Enter` (regular Enter inserts newline)
+- **Continuation prompt**: Lines show `... ` prefix when in multi-line mode
+- **Toggle feedback**: Clear status messages when enabling/disabling
+
+#### Ctrl+R History Search (#13)
+Reverse history search is now enabled in prompt_toolkit:
+
+- **Ctrl+R**: Opens reverse incremental search
+- **Type to filter**: Matches commands from history
+- **Enter**: Accepts the matched command
+- **Ctrl+G or Escape**: Cancels search
+
+### Changed
+
+- Updated help text in `TerminalUI` with new Keyboard Shortcuts section
+- Added `multiline` command to `COMMAND_REGISTRY` in completions
+
+---
+
 ## [0.10.4] - 2026-01-29
 
 ### Changed

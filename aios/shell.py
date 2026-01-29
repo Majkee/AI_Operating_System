@@ -15,6 +15,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.filters import Condition
 
 from .ui.completions import AIOSCompleter, create_bottom_toolbar
 from .tasks import TaskManager, TaskStatus
@@ -209,7 +210,20 @@ class AIOSShell:
             event.current_buffer.text = ''
             event.app.exit(result='\x02')
 
+        # Multi-line input: Alt+Enter or Escape+Enter to submit
+        # (In multiline mode, regular Enter inserts newline)
+        @kb.add('escape', 'enter')
+        def _submit_multiline(event):
+            event.current_buffer.validate_and_handle()
+
         self._key_bindings = kb
+
+        # Track if we're in multi-line mode
+        self._multiline_mode = False
+
+        @Condition
+        def is_multiline():
+            return self._multiline_mode
 
         self._prompt_session = PromptSession(
             history=self.history,
@@ -217,6 +231,9 @@ class AIOSShell:
             completer=self.completer,
             complete_while_typing=False,
             key_bindings=self._key_bindings,
+            enable_history_search=True,  # Ctrl+R reverse search
+            multiline=is_multiline,  # Dynamic multi-line based on mode
+            prompt_continuation='... ',  # Continuation prompt for multi-line
         )
 
     def _register_tools(self) -> None:
@@ -511,6 +528,14 @@ class AIOSShell:
 
         if lower_input == "clear":
             self.ui.clear_screen()
+            return True
+
+        if lower_input in ("multiline", "/multiline", "ml", "/ml"):
+            self._multiline_mode = not self._multiline_mode
+            if self._multiline_mode:
+                self.ui.print_success("Multi-line mode ON. Press Escape+Enter to submit.")
+            else:
+                self.ui.print_info("Multi-line mode OFF. Press Enter to submit.")
             return True
 
         if lower_input in ("show", "/show"):

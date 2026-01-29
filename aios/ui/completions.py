@@ -41,6 +41,12 @@ COMMAND_REGISTRY = [
         "has_arg": False,
     },
     {
+        "name": "multiline",
+        "aliases": ["/multiline", "ml", "/ml"],
+        "help": "Toggle multi-line input mode (Esc+Enter to submit)",
+        "has_arg": False,
+    },
+    {
         "name": "history",
         "aliases": [],
         "help": "Show conversation history for this session",
