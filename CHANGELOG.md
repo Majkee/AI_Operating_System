@@ -5,6 +5,43 @@ All notable changes to AIOS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-01-29
+
+### Added
+
+#### Multi-Step Progress Awareness
+Real-time progress display for multi-step tool operations:
+
+- **`MultiStepProgress` class** in `aios/ui/terminal.py`:
+  - Shows "Step X/Y: description" with spinner and progress bar
+  - Only displays for operations with 2+ tool calls (single steps show clean output)
+  - Completion message: "✓ Completed N operations"
+  - `multi_step_progress(total)` factory method on `TerminalUI`
+
+- **Human-readable tool descriptions** in `aios/shell.py`:
+  - `_get_tool_description()` generates friendly descriptions for tool calls
+  - Specific formatting for common tools (e.g., "Reading: config.yaml", "Running: ls -la...")
+  - Fallback to "Tool Name" format for unknown tools
+  - Long commands truncated to 40 characters
+
+- **Integration in `_process_tool_calls()`**:
+  - Tool execution loop wrapped with `MultiStepProgress` context manager
+  - Progress updates before each tool execution
+  - Step completion marked after each tool finishes
+
+#### Tests
+- 13 new tests in `tests/test_progress.py`:
+  - `TestMultiStepProgress` (4): single-step no display, multi-step shows progress, update tracking, completion message
+  - `TestTerminalUIProgressFactory` (1): factory creates progress instance
+  - `TestShellToolDescriptions` (6): run_command, read_file, write_file, search_files, unknown tool fallback, long command truncation
+  - `TestProcessToolCallsWithProgress` (2): single/multiple tool call progress behavior
+
+### Changed
+- `aios/shell.py` — `_process_tool_calls()` now shows progress for multi-step operations
+- `aios/ui/terminal.py` — added `MultiStepProgress` class and factory method
+
+---
+
 ## [0.9.1] - 2026-01-28
 
 ### Added

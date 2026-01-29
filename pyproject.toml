@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aiosys"
-version = "0.9.1"
+version = "0.10.0"
 description = "AI-powered Operating System Interface - Natural language interface for Linux"
 readme = "README.md"
 license = {text = "MIT"}

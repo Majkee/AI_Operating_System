@@ -4,7 +4,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/aiosys.svg)](https://pypi.org/project/aiosys/)
 [![Docker Hub](https://img.shields.io/docker/v/majkee/aios?label=docker%20hub)](https://hub.docker.com/r/majkee/aios)
-[![Tests](https://img.shields.io/badge/tests-454%20passed-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-563%20passed-brightgreen.svg)](#testing)
 [![Code style: PEP8](https://img.shields.io/badge/code%20style-pep8-green.svg)](https://www.python.org/dev/peps/pep-0008/)
 
 **Talk to your Linux system in plain English.** AIOS is a natural language interface powered by Claude that makes Linux accessible to everyone -- no command line experience required.
@@ -23,7 +23,7 @@ AIOS: I found these large directories in your home folder:
 - **No Learning Curve**: Just describe what you want in plain English
 - **Safe by Design**: Built-in guardrails prevent dangerous operations
 - **Explains Everything**: Understand what's happening on your system
-- **Extensible**: Plugin system for custom tools and workflows
+- **Extensible**: Skill system for custom tools and workflows
 - **Respects Privacy**: Runs locally, your conversations stay on your machine
 
 ## Installation
@@ -118,14 +118,14 @@ AIOS includes multiple protection layers:
 - **Automatic Backups**: Files are backed up before changes
 - **Audit Logging**: All actions are recorded for review
 
-### Plugin System
+### Skill System
 
 Extend AIOS with custom tools and workflows:
 
-- Drop plugins into `~/.config/aios/plugins/`
-- Plugins can register tools that Claude can use
+- Drop skills into `~/.config/aios/skills/`
+- Skills can register tools that Claude can use
 - Define recipes for multi-step automated workflows
-- Full lifecycle hooks for session-aware plugins
+- Full lifecycle hooks for session-aware skills
 
 ### Caching & Performance
 
@@ -159,7 +159,7 @@ Secure storage for passwords and API keys:
 
 - Encrypted with Fernet (AES-128-CBC)
 - Master password with PBKDF2 key derivation
-- Plugin integration for secure access
+- Skill integration for secure access
 
 ### Background Tasks
 
@@ -209,6 +209,15 @@ Automatic conversation history management prevents token limit crashes:
 - **Configurable budget**: Adjust `context_budget` for different needs
 - **Graceful fallback**: Falls back to truncation if summarization fails
 
+### Multi-Step Progress Awareness
+
+When Claude chains multiple tool calls (e.g., "organize my downloads" triggers 10+ file operations), users see real-time progress:
+
+- **Step counter**: "Step 3/7: Moving PDFs..." with progress bar
+- **Human-readable descriptions**: Tool calls translated to friendly text
+- **Completion summary**: "✓ Completed 7 operations" when done
+- **Smart display**: Single operations show no progress bar (clean output)
+
 ### Beautiful Interface
 
 - Rich, colorful terminal output with syntax highlighting
@@ -251,11 +260,11 @@ require_confirmation = true     # Confirm risky operations
 | `model` / `/model` | List available AI models |
 | `model <id>` | Switch to a different model |
 
-### Plugins & Tools
+### Skills & Tools
 
 | Command | Description |
 |---------|-------------|
-| `plugins` / `/plugins` | List loaded plugins |
+| `skills` / `/skills` | List loaded skills |
 | `tools` / `/tools` | List all available tools |
 | `recipes` / `/recipes` | List available recipes |
 | `stats` / `/stats` | Show session statistics |
@@ -298,7 +307,7 @@ aios/
 ├── data/          # Bundled default configuration
 ├── cache.py       # LRU cache, system info cache, tool result cache
 ├── ratelimit.py   # Token bucket + sliding window rate limiting
-├── plugins.py     # Plugin system (loading, tools, recipes)
+├── skills.py      # Skill system (loading, tools, recipes)
 ├── credentials.py # Encrypted credential storage
 ├── models.py      # Available Claude model definitions
 ├── errors.py      # Error handling and recovery
@@ -312,22 +321,22 @@ aios/
 | Document | Description |
 |----------|-------------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Internal architecture and component design |
-| [PLUGINS.md](PLUGINS.md) | Plugin system: creating tools, recipes, lifecycle hooks |
+| [SKILLS.md](SKILLS.md) | Skill system: creating tools, recipes, lifecycle hooks |
 | [CACHING.md](CACHING.md) | Caching system: LRU cache, system cache, tool result cache |
 | [RATELIMIT.md](RATELIMIT.md) | Rate limiting: token bucket, sliding window, configuration |
 | [SESSIONS.md](SESSIONS.md) | Session management: persistence, resume, history |
-| [CREDENTIALS.md](CREDENTIALS.md) | Credential management: encryption, storage, plugin usage |
+| [CREDENTIALS.md](CREDENTIALS.md) | Credential management: encryption, storage, skill usage |
 | [CI.md](CI.md) | CI/CD pipeline: tests, linting, security scans, Docker |
 | [SECURITY.md](SECURITY.md) | Security policy: reporting, features, limitations |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines: setup, code style, testing |
 | [CHANGELOG.md](CHANGELOG.md) | Version history and release notes |
 
-### Plugin Documentation
+### Skill Documentation
 
 | Document | Description |
 |----------|-------------|
-| [plugins/README.md](plugins/README.md) | Plugin directory overview and quick start |
-| [plugins/ANSIBLE_NETWORK.md](plugins/ANSIBLE_NETWORK.md) | Ansible Network plugin reference |
+| [skills/README.md](skills/README.md) | Skill directory overview and quick start |
+| [skills/ANSIBLE_NETWORK.md](skills/ANSIBLE_NETWORK.md) | Ansible Network skill reference |
 
 ## Requirements
 
@@ -388,7 +397,7 @@ auto_detect_sensitivity = "moderate"  # high, moderate, low
 
 ## Testing
 
-AIOS has a comprehensive test suite with 454 tests covering all major systems.
+AIOS has a comprehensive test suite with 563 tests covering all major systems.
 
 ```bash
 # Install test dependencies
@@ -402,7 +411,7 @@ pytest tests/ -v --cov=aios --cov-report=term-missing
 
 # Run specific test modules
 pytest tests/test_cache.py -v
-pytest tests/test_plugins.py -v
+pytest tests/test_skills.py -v
 pytest tests/test_ratelimit.py -v
 ```
 
@@ -410,13 +419,13 @@ pytest tests/test_ratelimit.py -v
 
 | Module | Tests |
 |--------|-------|
-| Ansible Plugin | 42 |
+| Ansible Skill | 42 |
 | Caching | 35 |
 | Claude Code Integration | 42 |
 | Configuration | 15 |
 | Error Handling | 43 |
 | File Operations | 32 |
-| Plugin System | 28 |
+| Skill System | 28 |
 | Rate Limiting | 33 |
 | Safety Guardrails | 22 |
 | Sandbox / Executor | 20 |
@@ -426,6 +435,7 @@ pytest tests/test_ratelimit.py -v
 | Tab Completions | 27 |
 | Streaming | 16 |
 | Context Window | 30 |
+| Multi-Step Progress | 13 |
 
 CI runs automatically on every push and PR. See [CI.md](CI.md) for details.
 
@@ -501,7 +511,7 @@ AIOS takes security seriously. See [SECURITY.md](SECURITY.md) for:
 
 ## Roadmap
 
-- [x] Plugin system for community tools
+- [x] Skill system for community tools
 - [x] Caching for improved performance
 - [x] Rate limiting for API protection
 - [x] Session persistence and resume
@@ -514,6 +524,7 @@ AIOS takes security seriously. See [SECURITY.md](SECURITY.md) for:
 - [x] Streaming responses with real-time Markdown rendering
 - [x] Interactive configuration menu
 - [x] Context window management with automatic summarization
+- [x] Multi-step progress awareness for tool chains
 - [ ] Web-based interface option
 - [ ] Multi-language support
 - [ ] Voice input integration

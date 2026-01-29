@@ -25,6 +25,74 @@ from rich.live import Live
 from ..config import get_config
 
 
+class MultiStepProgress:
+    """Display progress for multi-step operations.
+
+    Shows "Step X/Y: description" during tool call chains,
+    giving users visibility into overall operation progress.
+
+    Usage:
+        with ui.multi_step_progress(total=5) as progress:
+            for i, tool in enumerate(tools):
+                progress.update(i + 1, f"Running {tool['name']}...")
+                # execute tool
+    """
+
+    def __init__(self, console: Console, total: int):
+        self._console = console
+        self._total = total
+        self._current = 0
+        self._description = ""
+        self._progress: Optional[Progress] = None
+        self._task_id = None
+
+    def __enter__(self):
+        if self._total > 1:  # Only show for multi-step operations
+            self._progress = Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]{task.description}[/bold blue]"),
+                BarColumn(bar_width=20),
+                TextColumn("[dim]{task.percentage:>3.0f}%[/dim]"),
+                console=self._console,
+                transient=True,
+            )
+            self._progress.__enter__()
+            self._task_id = self._progress.add_task(
+                f"Step 0/{self._total}: Starting...",
+                total=self._total,
+                completed=0
+            )
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._progress is not None:
+            self._progress.__exit__(exc_type, exc_val, exc_tb)
+            if exc_type is None and self._total > 1:
+                self._console.print(
+                    f"[green]✓[/green] Completed {self._total} operations"
+                )
+        return False
+
+    def update(self, step: int, description: str) -> None:
+        """Update progress to show current step and description."""
+        self._current = step
+        self._description = description
+        if self._progress is not None and self._task_id is not None:
+            self._progress.update(
+                self._task_id,
+                description=f"Step {step}/{self._total}: {description}",
+                completed=step - 1,  # Bar shows completed steps
+            )
+
+    def step_complete(self) -> None:
+        """Mark the current step as complete (advances the progress bar)."""
+        if self._progress is not None and self._task_id is not None:
+            self._progress.update(
+                self._task_id,
+                completed=self._current
+            )
+
+
 class StreamingDisplay:
     """Live-updating display for streaming command output.
 
@@ -330,6 +398,10 @@ class TerminalUI:
         """Return a StreamingDisplay context manager for live output."""
         return StreamingDisplay(self.console, description)
 
+    def multi_step_progress(self, total: int) -> MultiStepProgress:
+        """Return a MultiStepProgress context manager for multi-step operations."""
+        return MultiStepProgress(self.console, total)
+
     def streaming_response(self) -> StreamingResponseHandler:
         """Return a StreamingResponseHandler for streaming Claude responses."""
         return StreamingResponseHandler(self.console)
@@ -458,9 +530,9 @@ Just talk to me naturally! Here are some things you can ask:
 - **model** - List available AI models
 - **model <id>** - Switch to a different model
 
-## Plugin Commands
+## Skill Commands
 
-- **plugins** - List loaded plugins
+- **skills** - List loaded skills
 - **tools** - List available tools
 - **recipes** - List available recipes/workflows
 - **stats** - Show session statistics

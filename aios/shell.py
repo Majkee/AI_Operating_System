@@ -401,30 +401,60 @@ class AIOSShell:
         if tokens_used > 0:
             self.rate_limiter.record_tokens(tokens_used)
 
+    def _get_tool_description(self, tool_name: str, tool_input: dict) -> str:
+        """Generate a human-readable description for a tool call."""
+        descriptions = {
+            "run_command": lambda i: f"Running: {i.get('command', 'command')[:40]}...",
+            "read_file": lambda i: f"Reading: {Path(i.get('path', '')).name}",
+            "write_file": lambda i: f"Writing: {Path(i.get('path', '')).name}",
+            "search_files": lambda i: f"Searching for: {i.get('query', 'files')}",
+            "list_directory": lambda i: f"Listing: {Path(i.get('path', '')).name or 'directory'}",
+            "get_system_info": lambda i: f"Getting {i.get('info_type', 'system')} info",
+            "manage_application": lambda i: f"{i.get('action', 'Managing').title()} app",
+            "archive_operations": lambda i: f"{i.get('operation', 'Archive').title()} operation",
+            "disk_operations": lambda i: f"Disk: {i.get('operation', 'operation')}",
+        }
+        if tool_name in descriptions:
+            try:
+                return descriptions[tool_name](tool_input)
+            except Exception:
+                pass
+        # Fallback: format tool name nicely
+        return tool_name.replace("_", " ").title()
+
     def _process_tool_calls(self, tool_calls: list) -> list:
         """Process tool calls and return results."""
         results = []
+        total = len(tool_calls)
 
-        for tool_call in tool_calls:
-            tool_name = tool_call["name"]
-            tool_input = tool_call["input"]
-            tool_id = tool_call["id"]
+        with self.ui.multi_step_progress(total) as progress:
+            for idx, tool_call in enumerate(tool_calls, 1):
+                tool_name = tool_call["name"]
+                tool_input = tool_call["input"]
+                tool_id = tool_call["id"]
 
-            result = self.tool_handler.execute(tool_name, tool_input)
+                # Update progress with human-readable description
+                description = self._get_tool_description(tool_name, tool_input)
+                progress.update(idx, description)
 
-            content = result.output if result.success else f"Error: {result.error}"
+                result = self.tool_handler.execute(tool_name, tool_input)
 
-            results.append({
-                "tool_use_id": tool_id,
-                "content": content,
-                "is_error": not result.success
-            })
+                content = result.output if result.success else f"Error: {result.error}"
 
-            if result.user_friendly_message:
-                if result.success:
-                    self.ui.print_success(result.user_friendly_message)
-                else:
-                    self.ui.print_error(result.user_friendly_message)
+                results.append({
+                    "tool_use_id": tool_id,
+                    "content": content,
+                    "is_error": not result.success
+                })
+
+                # Mark step complete (advances progress bar)
+                progress.step_complete()
+
+                if result.user_friendly_message:
+                    if result.success:
+                        self.ui.print_success(result.user_friendly_message)
+                    else:
+                        self.ui.print_error(result.user_friendly_message)
 
         return results
 
