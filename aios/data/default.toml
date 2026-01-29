@@ -66,8 +66,8 @@ show_commands = true
 # Enable audit logging
 enabled = true
 
-# Log file location
-path = "/var/log/aios/audit.log"
+# Log file location (~ expands to home directory)
+path = "~/.config/aios/logs/audit.log"
 
 # Log level: debug, info, warning, error
 level = "info"

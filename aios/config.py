@@ -75,7 +75,7 @@ class UIConfig(BaseModel):
 class LoggingConfig(BaseModel):
     """Logging configuration."""
     enabled: bool = Field(default=True, description="Enable audit logging")
-    path: str = Field(default="/var/log/aios/audit.log", description="Log file path")
+    path: str = Field(default="~/.config/aios/logs/audit.log", description="Log file path")
     level: str = Field(default="info", description="Log level")
 
 

@@ -5,6 +5,28 @@ All notable changes to AIOS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] - 2026-01-29
+
+### Fixed
+
+#### Audit Log Path for Non-Root Users
+Changed default audit log path from `/var/log/aios/audit.log` (requires root) to `~/.config/aios/logs/audit.log` (works for all users).
+
+**Files changed:**
+- `aios/config.py` — LoggingConfig default path
+- `aios/data/default.toml` — default path
+- `config/default.toml` — default path
+- `aios/safety/audit.py` — fallback path updated
+- `README.md` — config example updated
+
+**Behavior:**
+- `~` expands to user's home directory
+- Creates `~/.config/aios/logs/` directory automatically
+- Falls back to same location if primary path fails (permission error)
+- No root access required
+
+---
+
 ## [0.10.1] - 2026-01-29
 
 ### Changed

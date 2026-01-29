@@ -100,8 +100,8 @@ class AuditLogger:
         try:
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
         except PermissionError:
-            # Fall back to user directory
-            self.log_path = Path.home() / ".config" / "aios" / "audit.log"
+            # Fall back to user config directory
+            self.log_path = Path.home() / ".config" / "aios" / "logs" / "audit.log"
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
     def _setup_logger(self) -> None:

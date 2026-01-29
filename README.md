@@ -378,7 +378,7 @@ show_commands = true            # Show what's being executed
 
 [logging]
 enabled = true                  # Enable audit logging
-path = "/var/log/aios/audit.log"
+path = "~/.config/aios/logs/audit.log"  # ~ expands to home dir
 level = "info"
 
 [session]
