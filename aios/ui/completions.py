@@ -142,6 +142,12 @@ COMMAND_REGISTRY = [
         "help": "List previous Claude Code sessions",
         "has_arg": False,
     },
+    {
+        "name": "widgets",
+        "aliases": ["/widgets"],
+        "help": "Manage welcome screen widgets (list, enable, disable, create)",
+        "has_arg": True,
+    },
 ]
 
 

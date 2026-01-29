@@ -305,6 +305,7 @@ class TerminalUI:
         tools_count: int = 0,
         recipes_count: int = 0,
         recent_commands: Optional[List[str]] = None,
+        widget_manager=None,
     ) -> None:
         """Print enhanced welcome message with system info."""
         from rich.console import Group
@@ -353,6 +354,22 @@ class TerminalUI:
         left.append(" Esc+En ", style="cyan")
         left.append("multi-line submit\n", style="dim")
 
+        # Widgets section
+        if widget_manager:
+            enabled_widgets = widget_manager.get_enabled_widgets()
+            if enabled_widgets:
+                left.append("\n", style="")
+                left.append(" Widgets\n", style="bold yellow")
+                for widget in enabled_widgets:
+                    try:
+                        output = widget.render()
+                        for line_text, line_style in output.lines[:4]:  # Max 4 lines per widget
+                            # Truncate to fit column width
+                            display_text = line_text[:35] if len(line_text) > 35 else line_text
+                            left.append(f" {display_text}\n", style=line_style)
+                    except Exception:
+                        pass  # Skip failed widgets silently
+
         # Recent commands
         if recent_commands:
             left.append("\n", style="")
@@ -399,7 +416,7 @@ class TerminalUI:
         # === BOTTOM: Popular commands (full width) ===
         bottom = Text()
 
-        commands = ["help", "skills", "stats", "history", "sessions", "config", "exit"]
+        commands = ["help", "history", "show", "skills", "recipes", "tools", "stats", "config", "credentials", "sessions", "resume", "tasks", "model", "code"]
 
         bottom.append("  ", style="")
         for i, cmd in enumerate(commands):

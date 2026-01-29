@@ -56,7 +56,8 @@ from .ratelimit import (
 
 # Import refactored modules
 from .handlers import CommandHandler, FileToolHandler, SystemHandler, AppHandler, LinuxToolsHandler
-from .commands import DisplayCommands, ConfigCommands, SessionCommands, CodeCommands
+from .commands import DisplayCommands, ConfigCommands, SessionCommands, CodeCommands, WidgetCommands
+from .widgets import get_widget_manager
 
 
 class AIOSShell:
@@ -191,6 +192,26 @@ class AIOSShell:
             code_runner=self.code_runner,
             audit=self.audit,
             config=self.config,
+        )
+
+        # Initialize widget system
+        self.widget_manager = get_widget_manager()
+        self.widget_manager.load_all()
+        # Enable default widgets from config if available
+        if hasattr(self.config, 'widgets') and hasattr(self.config.widgets, 'enabled'):
+            self.widget_manager.set_enabled_from_config(self.config.widgets.enabled)
+        else:
+            # Default: enable cpu_memory widget
+            self.widget_manager.enable_widget("cpu_memory")
+
+        # Set task manager reference for tasks widget
+        tasks_widget = self.widget_manager.get_widget("tasks")
+        if tasks_widget and hasattr(tasks_widget, 'set_task_manager'):
+            tasks_widget.set_task_manager(self.task_manager)
+
+        self.widget_cmds = WidgetCommands(
+            ui=self.ui,
+            widget_manager=self.widget_manager,
         )
 
     def _setup_prompt_session(self) -> None:
@@ -619,6 +640,16 @@ class AIOSShell:
             self.code_cmds.run_code_task()
             return True
 
+        # Widget commands
+        if lower_input in ("widgets", "/widgets"):
+            self.widget_cmds.handle_widgets()
+            return True
+
+        if lower_input.startswith("widgets ") or lower_input.startswith("/widgets "):
+            args = user_input.split(" ", 1)[1].strip()
+            self.widget_cmds.handle_widgets(args)
+            return True
+
         if not user_input.strip():
             return True
 
@@ -759,6 +790,7 @@ class AIOSShell:
             tools_count=tool_count,
             recipes_count=recipe_count,
             recent_commands=recent_commands if recent_commands else None,
+            widget_manager=self.widget_manager,
         )
 
         # Main loop

@@ -11,7 +11,7 @@ Loads configuration from multiple sources in order of priority:
 import os
 import sys
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, List, Literal, Optional
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -112,6 +112,14 @@ class CodeConfig(BaseModel):
     )
 
 
+class WidgetsConfig(BaseModel):
+    """Widgets configuration for welcome screen."""
+    enabled: List[str] = Field(
+        default=["cpu_memory"],
+        description="List of enabled widget names"
+    )
+
+
 class AIOSConfig(BaseModel):
     """Main AIOS configuration."""
     api: APIConfig = Field(default_factory=APIConfig)
@@ -121,6 +129,7 @@ class AIOSConfig(BaseModel):
     session: SessionConfig = Field(default_factory=SessionConfig)
     executor: ExecutorConfig = Field(default_factory=ExecutorConfig)
     code: CodeConfig = Field(default_factory=CodeConfig)
+    widgets: WidgetsConfig = Field(default_factory=WidgetsConfig)
 
 
 def get_config_paths() -> list[Path]:
