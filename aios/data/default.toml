@@ -104,5 +104,16 @@ auto_detect_sensitivity = "moderate"
 
 [widgets]
 # Widgets shown on welcome screen (below shortcuts)
-# Available: cpu_memory, process_status, tasks, disk, network
-enabled = ["cpu_memory"]
+# Available widgets:
+#   cpu_memory     - CPU and memory usage bars
+#   disk           - Disk usage bar
+#   uptime         - System uptime and load average
+#   docker         - Docker containers status
+#   network        - Network interfaces and IPs
+#   process_status - Status of nginx, docker, postgresql, redis
+#   top_procs      - Top processes by CPU usage
+#   users          - Logged in users
+#   tasks          - Background tasks summary
+#   datetime       - Current date and time
+#   swap           - Swap memory usage
+enabled = ["cpu_memory", "uptime", "disk"]

@@ -317,6 +317,279 @@ class NetworkWidget(WidgetBase):
             ])
 
 
+class UptimeWidget(WidgetBase):
+    """Displays system uptime and load average."""
+
+    @property
+    def metadata(self) -> WidgetMetadata:
+        return WidgetMetadata(
+            name="uptime",
+            description="System uptime and load average",
+            author="AIOS",
+        )
+
+    def render(self) -> WidgetOutput:
+        try:
+            import datetime
+            boot_time = datetime.datetime.fromtimestamp(psutil.boot_time())
+            uptime = datetime.datetime.now() - boot_time
+
+            # Format uptime
+            days = uptime.days
+            hours, remainder = divmod(uptime.seconds, 3600)
+            minutes, _ = divmod(remainder, 60)
+
+            if days > 0:
+                uptime_str = f"{days}d {hours}h {minutes}m"
+            elif hours > 0:
+                uptime_str = f"{hours}h {minutes}m"
+            else:
+                uptime_str = f"{minutes}m"
+
+            # Get load average (Unix only, use CPU percent on Windows)
+            try:
+                load1, load5, load15 = psutil.getloadavg()
+                load_str = f"{load1:.2f} {load5:.2f} {load15:.2f}"
+                # Color based on load vs CPU count
+                cpu_count = psutil.cpu_count() or 1
+                load_style = "green" if load1 < cpu_count else ("yellow" if load1 < cpu_count * 2 else "red")
+            except (AttributeError, OSError):
+                # Windows doesn't have getloadavg
+                cpu_percent = psutil.cpu_percent(interval=0.1)
+                load_str = f"CPU {cpu_percent:.0f}%"
+                load_style = "green" if cpu_percent < 70 else ("yellow" if cpu_percent < 90 else "red")
+
+            return WidgetOutput(lines=[
+                (f"Up: {uptime_str}", "cyan"),
+                (f"Load: {load_str}", load_style),
+            ])
+        except Exception:
+            return WidgetOutput(lines=[
+                ("Uptime: [error]", "dim"),
+            ])
+
+
+class DockerWidget(WidgetBase):
+    """Displays Docker containers status."""
+
+    @property
+    def metadata(self) -> WidgetMetadata:
+        return WidgetMetadata(
+            name="docker",
+            description="Docker containers status",
+            author="AIOS",
+        )
+
+    def render(self) -> WidgetOutput:
+        try:
+            # Check if docker is available
+            if shutil.which("docker") is None:
+                return WidgetOutput(lines=[
+                    ("Docker: not installed", "dim"),
+                ])
+
+            # Get container counts using docker ps
+            result = subprocess.run(
+                ["docker", "ps", "--format", "{{.Status}}"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+
+            if result.returncode != 0:
+                # Docker daemon might not be running
+                if "Cannot connect" in result.stderr or "permission denied" in result.stderr.lower():
+                    return WidgetOutput(lines=[
+                        ("Docker: daemon not running", "yellow"),
+                    ])
+                return WidgetOutput(lines=[
+                    ("Docker: error", "red"),
+                ])
+
+            # Count running containers
+            lines = result.stdout.strip().split('\n') if result.stdout.strip() else []
+            running = len(lines)
+
+            if running == 0:
+                return WidgetOutput(lines=[
+                    ("Docker: no containers", "dim"),
+                ])
+
+            style = "green" if running > 0 else "dim"
+            return WidgetOutput(lines=[
+                (f"Docker: {running} container{'s' if running != 1 else ''} running", style),
+            ])
+        except subprocess.TimeoutExpired:
+            return WidgetOutput(lines=[
+                ("Docker: timeout", "yellow"),
+            ])
+        except Exception:
+            return WidgetOutput(lines=[
+                ("Docker: [error]", "dim"),
+            ])
+
+
+class TopProcessWidget(WidgetBase):
+    """Displays top processes by CPU/memory."""
+
+    @property
+    def metadata(self) -> WidgetMetadata:
+        return WidgetMetadata(
+            name="top_procs",
+            description="Top processes by resource usage",
+            author="AIOS",
+        )
+
+    def render(self) -> WidgetOutput:
+        try:
+            # Get top 3 processes by CPU
+            procs = []
+            for proc in psutil.process_iter(['name', 'cpu_percent', 'memory_percent']):
+                try:
+                    info = proc.info
+                    if info['cpu_percent'] is not None and info['cpu_percent'] > 0:
+                        procs.append(info)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+
+            # Sort by CPU usage
+            procs.sort(key=lambda x: x['cpu_percent'] or 0, reverse=True)
+            top_procs = procs[:3]
+
+            if not top_procs:
+                return WidgetOutput(lines=[
+                    ("Processes: idle", "dim"),
+                ])
+
+            lines = []
+            for p in top_procs:
+                name = (p['name'] or 'unknown')[:12]
+                cpu = p['cpu_percent'] or 0
+                mem = p['memory_percent'] or 0
+                style = "green" if cpu < 50 else ("yellow" if cpu < 80 else "red")
+                lines.append((f"{name:12} {cpu:5.1f}% {mem:4.1f}%", style))
+
+            return WidgetOutput(lines=lines)
+        except Exception:
+            return WidgetOutput(lines=[
+                ("Processes: [error]", "dim"),
+            ])
+
+
+class UsersWidget(WidgetBase):
+    """Displays logged in users."""
+
+    @property
+    def metadata(self) -> WidgetMetadata:
+        return WidgetMetadata(
+            name="users",
+            description="Currently logged in users",
+            author="AIOS",
+        )
+
+    def render(self) -> WidgetOutput:
+        try:
+            users = psutil.users()
+
+            if not users:
+                return WidgetOutput(lines=[
+                    ("Users: none logged in", "dim"),
+                ])
+
+            # Deduplicate users (same user on multiple terminals)
+            unique_users = {}
+            for u in users:
+                if u.name not in unique_users:
+                    unique_users[u.name] = u.terminal or "local"
+
+            user_count = len(unique_users)
+
+            if user_count == 1:
+                user_name = list(unique_users.keys())[0]
+                return WidgetOutput(lines=[
+                    (f"User: {user_name}", "cyan"),
+                ])
+
+            # Multiple users
+            lines = [(f"Users: {user_count} logged in", "cyan")]
+            for name in list(unique_users.keys())[:2]:  # Show max 2 users
+                lines.append((f"  {name}", "dim"))
+
+            return WidgetOutput(lines=lines[:3])
+        except Exception:
+            return WidgetOutput(lines=[
+                ("Users: [error]", "dim"),
+            ])
+
+
+class DateTimeWidget(WidgetBase):
+    """Displays current date and time."""
+
+    @property
+    def metadata(self) -> WidgetMetadata:
+        return WidgetMetadata(
+            name="datetime",
+            description="Current date and time",
+            author="AIOS",
+        )
+
+    def render(self) -> WidgetOutput:
+        try:
+            import datetime
+            now = datetime.datetime.now()
+            date_str = now.strftime("%a %b %d")
+            time_str = now.strftime("%H:%M")
+
+            return WidgetOutput(lines=[
+                (f"{date_str} {time_str}", "cyan"),
+            ])
+        except Exception:
+            return WidgetOutput(lines=[
+                ("DateTime: [error]", "dim"),
+            ])
+
+
+class SwapWidget(WidgetBase):
+    """Displays swap memory usage."""
+
+    @property
+    def metadata(self) -> WidgetMetadata:
+        return WidgetMetadata(
+            name="swap",
+            description="Swap memory usage",
+            author="AIOS",
+        )
+
+    def render(self) -> WidgetOutput:
+        try:
+            swap = psutil.swap_memory()
+
+            if swap.total == 0:
+                return WidgetOutput(lines=[
+                    ("Swap: not configured", "dim"),
+                ])
+
+            percent = swap.percent
+            used_gb = swap.used / (1024**3)
+            total_gb = swap.total / (1024**3)
+
+            # Progress bar
+            filled = int(percent / 5)
+            bar = "#" * filled + "-" * (20 - filled)
+
+            # High swap usage is concerning
+            style = "green" if percent < 30 else ("yellow" if percent < 70 else "red")
+
+            return WidgetOutput(lines=[
+                (f"Swap:   [{bar}] {percent:.0f}%", style),
+                (f"        {used_gb:.1f}GB / {total_gb:.1f}GB", "dim"),
+            ])
+        except Exception:
+            return WidgetOutput(lines=[
+                ("Swap: [error]", "dim"),
+            ])
+
+
 # ---------------------------------------------------------------------------
 # Widget Manager
 # ---------------------------------------------------------------------------
@@ -490,6 +763,12 @@ def get_widget_manager() -> WidgetManager:
         _widget_manager.register_builtin(TasksWidget())
         _widget_manager.register_builtin(DiskWidget())
         _widget_manager.register_builtin(NetworkWidget())
+        _widget_manager.register_builtin(UptimeWidget())
+        _widget_manager.register_builtin(DockerWidget())
+        _widget_manager.register_builtin(TopProcessWidget())
+        _widget_manager.register_builtin(UsersWidget())
+        _widget_manager.register_builtin(DateTimeWidget())
+        _widget_manager.register_builtin(SwapWidget())
     return _widget_manager
 
 
