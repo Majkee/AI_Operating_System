@@ -1,4 +1,4 @@
-# AIOS v0.8.10 Manual Test Checklist
+# AIOS v0.10.3 Manual Test Checklist
 
 Run these tests to verify all features work end-to-end.
 Mark each test with `[x]` when passed or `[!]` if failed.
@@ -21,74 +21,75 @@ aios
 
 ### General Commands
 
-- [ ] **1.1** Type `help` -- should display help with all sections including Plugin Commands, Session Commands, Coding Tasks
+- [ ] **1.1** Type `help` -- should display help with all sections including Skill Commands, Session Commands, Coding Tasks
 - [ ] **1.2** Type `clear` -- screen should clear
 - [ ] **1.3** Type `history` -- should show current session summary (session_id, message counts)
 - [ ] **1.4** Type `exit` -- should print "Goodbye!" and exit cleanly
+- [ ] **1.5** Type `show` or `/show` -- should show "No streaming output stored" (or last command output if available)
 
-### Plugin Commands
+### Skill Commands
 
-- [ ] **1.5** Type `plugins` or `/plugins` -- should show "No plugins loaded" (unless plugins dir populated) or list loaded plugins
-- [ ] **1.6** Type `tools` or `/tools` -- should list all 9 built-in tools (run_command, read_file, write_file, search_files, list_directory, get_system_info, manage_application, ask_clarification, open_application)
-- [ ] **1.7** Type `recipes` or `/recipes` -- should show "No recipes available" or list available recipes
-- [ ] **1.8** Type `stats` or `/stats` -- should display API Usage (requests, tokens), Cache Performance, and Plugins sections
+- [ ] **1.6** Type `skills` or `/skills` -- should show "No skills loaded" (unless skills dir populated) or list loaded skills
+- [ ] **1.7** Type `tools` or `/tools` -- should list all 9 built-in tools (run_command, read_file, write_file, search_files, list_directory, get_system_info, manage_application, ask_clarification, open_application)
+- [ ] **1.8** Type `recipes` or `/recipes` -- should show "No recipes available" or list available recipes
+- [ ] **1.9** Type `stats` or `/stats` -- should display API Usage (requests, tokens), Cache Performance, and Skills sections
 
 ### Session Commands
 
-- [ ] **1.9** Type `sessions` or `/sessions` -- should list previous sessions (or "No previous sessions found" on first run)
-- [ ] **1.10** Type `resume nonexistent` -- should show error "Session 'nonexistent' not found"
+- [ ] **1.10** Type `sessions` or `/sessions` -- should list previous sessions (or "No previous sessions found" on first run)
+- [ ] **1.11** Type `resume nonexistent` -- should show error "Session 'nonexistent' not found"
 
 ### Credential Commands
 
-- [ ] **1.11** Type `credentials` or `/credentials` -- should show "Credential store not initialized" or list stored credentials
+- [ ] **1.12** Type `credentials` or `/credentials` -- should show "Credential store not initialized" or list stored credentials
 
 ### Task Commands
 
-- [ ] **1.12** Type `tasks` or `/tasks` -- should show "No background tasks." when no tasks exist
-- [ ] **1.13** Press **Ctrl+B** -- should open task browser (same as `tasks` command), then type `b` to go back
+- [ ] **1.13** Type `tasks` or `/tasks` -- should show "No background tasks." when no tasks exist
+- [ ] **1.14** Press **Ctrl+B** -- should open task browser (same as `tasks` command), then type `b` to go back
 
 ### Model Commands
 
-- [ ] **1.14** Type `model` or `/model` -- should display a table of available models with current selection marked
-- [ ] **1.15** Type `model 1` -- should change model to the first option and confirm with success message
-- [ ] **1.16** Type `model invalid-name` -- should show "Invalid model" error
+- [ ] **1.15** Type `model` or `/model` -- should display a table of available models with current selection marked
+- [ ] **1.16** Type `model 1` -- should change model to the first option and confirm with success message
+- [ ] **1.17** Type `model invalid-name` -- should show "Invalid model" error
 
 ### Config Commands
 
-- [ ] **1.17** Type `config` or `/config` -- should open interactive configuration menu with numbered settings table
-- [ ] **1.18** Enter `0` or press Enter with no input -- should exit config menu
-- [ ] **1.19** Enter an invalid number (e.g. `99`) -- should show "Invalid selection" error
+- [ ] **1.18** Type `config` or `/config` -- should open interactive configuration menu with numbered settings table
+- [ ] **1.19** Enter `0` or press Enter with no input -- should exit config menu
+- [ ] **1.20** Enter an invalid number (e.g. `99`) -- should show "Invalid selection" error
 
 ---
 
-## 2. Plugin System
+## 2. Skill System
 
-### Plugin Loading
+### Skill Loading
 
-- [ ] **2.1** Place a test plugin in `~/.config/aios/plugins/` and restart AIOS -- should show "Loaded 1 plugin(s)" on startup
-- [ ] **2.2** After loading, `plugins` command should list the plugin with name, version, description
-- [ ] **2.3** `tools` command should show the plugin's tools under "Plugin Tools" section
+- [ ] **2.1** Place a test skill in `~/.config/aios/skills/` and restart AIOS -- should show "Loaded 1 skill(s)" on startup
+- [ ] **2.2** After loading, `skills` command should list the skill with name, version, description
+- [ ] **2.3** `tools` command should show the skill's tools under "Skill Tools" section
 
-### Plugin Tool Example (Ansible)
+### Skill Tool Example (Ansible)
 
-To test with the Ansible plugin:
+To test with the Ansible skill:
 ```bash
-# Copy plugin to plugins directory
-mkdir -p ~/.config/aios/plugins
-cp /app/plugins/ansible_network.py ~/.config/aios/plugins/  # Docker
+# Copy skill to skills directory
+mkdir -p ~/.config/aios/skills
+cp /app/skills/ansible_network.py ~/.config/aios/skills/  # Docker
 # or
-cp plugins/ansible_network.py ~/.config/aios/plugins/         # local
+cp skills/ansible_network.py ~/.config/aios/skills/         # local
 ```
 
-- [ ] **2.4** Restart AIOS -- should show "Loaded 1 plugin(s)" and plugin info line
-- [ ] **2.5** `plugins` shows "ansible-network" with version and description
+- [ ] **2.4** Restart AIOS -- should show "Loaded 1 skill(s)" and skill info line
+- [ ] **2.5** `skills` shows "ansible-network" with version and description
 - [ ] **2.6** `tools` shows Ansible tools (ansible_run_playbook, ansible_adhoc, etc.)
 - [ ] **2.7** `recipes` shows network recipes (network_health_check, network_backup, etc.)
 
-### Plugin Lifecycle
+### Skill Lifecycle
 
-- [ ] **2.8** Start session -- plugins receive on_session_start (no errors in output)
-- [ ] **2.9** Exit session -- plugins receive on_session_end (no errors in output)
+- [ ] **2.8** Start session -- skills receive on_session_start (no errors in output)
+- [ ] **2.9** Exit session -- skills receive on_session_end (no errors in output)
 
 ---
 
@@ -264,9 +265,15 @@ file ~/.config/aios/credentials.enc  # Should say "data" not "JSON" or "ASCII"
 
 ### Streaming Output
 
-- [ ] **10.5** Ask "Install curl" (or another package) -- should use `long_running: true` and show a live-updating Rich panel with scrolling output
-- [ ] **10.6** The streaming display should show line count and description while running
-- [ ] **10.7** After completion, a summary line like "Completed. (N lines of output)" should appear
+- [ ] **10.5** Ask "Install curl" (or another package) -- should use `long_running: true` and show a Progress display with spinner, line count, and elapsed time
+- [ ] **10.6** The streaming display should show "⚙ Installing curl ████████ 123 lines 0:00:15" format while running
+- [ ] **10.7** After completion, a summary line like "✓ Completed (123 lines)" should appear
+
+### Show Command for Output Details
+
+- [ ] **10.8** After a streaming command completes, type `show` -- should display the last output in a panel
+- [ ] **10.9** The panel should show total line count and truncation info if applicable
+- [ ] **10.10** After viewing, `show` again should say "No streaming output stored" (cleared after viewing)
 
 ---
 
@@ -495,30 +502,158 @@ The Docker image includes it; for local testing, install it first.
 
 ---
 
-## 16. Docker-Specific Tests
+## 16. Multi-Step Progress Awareness
 
-- [ ] **16.1** Container starts without errors: `docker compose up -d && docker compose logs`
-- [ ] **16.2** Version check: `docker compose exec aios python3 -c "import aios; print(aios.__version__)"` -- should print "0.8.10"
-- [ ] **16.3** All imports work:
+### Progress Display for Tool Chains
+
+- [ ] **16.1** Ask "Show me disk usage, memory usage, and list of running processes" -- should trigger multiple tool calls
+- [ ] **16.2** Should see "Step 1/3: Getting system info..." with spinner and progress bar
+- [ ] **16.3** Should see steps incrementing: "Step 2/3: ...", "Step 3/3: ..."
+- [ ] **16.4** After completion, should see "✓ Completed 3 operations"
+
+### Single Tool Operations
+
+- [ ] **16.5** Ask "Show me disk usage" (single tool) -- should NOT show progress bar (clean output)
+- [ ] **16.6** Only multi-step operations (2+ tools) should display the progress indicator
+
+### Human-Readable Descriptions
+
+- [ ] **16.7** Progress should show friendly descriptions like "Reading: config.yaml" or "Running: ls -la..."
+- [ ] **16.8** Long commands should be truncated to ~40 characters with "..."
+
+---
+
+## 17. Exponential Backoff and Circuit Breaker
+
+### Backoff Behavior
+
+Test using Python API:
+```python
+docker compose exec aios python3 -c "
+from aios.errors import calculate_backoff
+
+# Verify exponential growth
+for attempt in range(1, 6):
+    delay = calculate_backoff(attempt, base_delay=1.0, jitter=False)
+    print(f'Attempt {attempt}: {delay:.1f}s')
+
+# Expected: 1.0, 2.0, 4.0, 8.0, 16.0
+"
+```
+
+- [ ] **17.1** Backoff grows exponentially: 1s → 2s → 4s → 8s → 16s...
+- [ ] **17.2** Backoff is capped at `max_delay` (default 30s for client, 60s for general)
+- [ ] **17.3** Jitter adds ±25% variation to prevent thundering herd
+
+### Circuit Breaker
+
+Test using Python API:
+```python
+docker compose exec aios python3 -c "
+from aios.errors import CircuitBreaker
+
+cb = CircuitBreaker(failure_threshold=3, recovery_timeout=5.0)
+print(f'Initial: {cb.state}')  # closed
+
+for i in range(3):
+    cb.record_failure()
+    print(f'After failure {i+1}: {cb.state}')
+
+print(f'Allow request: {cb.allow_request()}')  # False
+
+cb.reset()
+print(f'After reset: {cb.state}')  # closed
+"
+```
+
+- [ ] **17.4** Circuit starts in CLOSED state
+- [ ] **17.5** After N consecutive failures (default 5), circuit opens
+- [ ] **17.6** Open circuit rejects requests immediately (returns error without calling API)
+- [ ] **17.7** After recovery timeout, circuit transitions to HALF_OPEN
+- [ ] **17.8** Success in HALF_OPEN closes circuit; failure reopens it
+- [ ] **17.9** `reset()` returns circuit to CLOSED state
+
+### Client Integration
+
+```python
+docker compose exec aios python3 -c "
+import os
+os.environ['ANTHROPIC_API_KEY'] = 'test-key'
+
+from aios.claude.client import ClaudeClient
+
+client = ClaudeClient()
+print(f'Circuit breaker: {client._circuit_breaker is not None}')
+print(f'Retry config: {client._retry_config}')
+print(f'Stats: {client.get_circuit_breaker_stats()}')
+"
+```
+
+- [ ] **17.10** ClaudeClient has circuit breaker with default settings (threshold=5, timeout=60s)
+- [ ] **17.11** Retry config has max_attempts=3, base_delay=1.0, max_delay=30.0
+- [ ] **17.12** `get_circuit_breaker_stats()` returns state, failure_count, etc.
+- [ ] **17.13** `reset_circuit_breaker()` resets to closed state
+
+### Retryable Exceptions
+
+- [ ] **17.14** Client retries on: `APIConnectionError`, `RateLimitError`, `InternalServerError`, `ConnectionError`, `TimeoutError`
+- [ ] **17.15** Client does NOT retry on: `AuthenticationError`, `BadRequestError` (non-transient)
+
+---
+
+## 18. Audit Logging
+
+### Log Path
+
+- [ ] **18.1** Default log path should be `~/.config/aios/logs/audit.log` (not `/var/log/aios/`)
+- [ ] **18.2** Log directory should be created automatically if it doesn't exist
+
+### Verify Log Location
+
+```bash
+docker compose exec aios python3 -c "
+from aios.config import get_config
+from pathlib import Path
+
+config = get_config()
+log_path = Path(config.logging.path).expanduser()
+print(f'Log path: {config.logging.path}')
+print(f'Expanded: {log_path}')
+print(f'Parent exists: {log_path.parent.exists()}')
+"
+```
+
+- [ ] **18.3** Log path should expand `~` to user home directory
+- [ ] **18.4** Works for non-root users (no permission errors)
+
+---
+
+## 19. Docker-Specific Tests
+
+- [ ] **19.1** Container starts without errors: `docker compose up -d && docker compose logs`
+- [ ] **19.2** Version check: `docker compose exec aios python3 -c "import aios; print(aios.__version__)"` -- should print "0.10.3"
+- [ ] **19.3** All imports work:
   ```bash
   docker compose exec aios python3 -c "
   from aios.cache import LRUCache
   from aios.ratelimit import TokenBucket
-  from aios.plugins import PluginBase
+  from aios.skills import SkillBase
   from aios.credentials import CredentialStore
   from aios.tasks import TaskManager, TaskStatus, BackgroundTask
   from aios.tasks.browser import TaskBrowser
   from aios.code import CodeRunner, LaunchResult, CodeSession
   from aios.config import CodeConfig
+  from aios.errors import CircuitBreaker, ErrorRecovery, calculate_backoff
   print('All imports OK')
   "
   ```
-- [ ] **16.4** Config directories exist: `docker compose exec aios ls -la /home/aios/.config/aios/`
-- [ ] **16.5** Claude Code CLI is available: `docker compose exec aios which claude` -- should print a path
+- [ ] **19.4** Config directories exist: `docker compose exec aios ls -la /home/aios/.config/aios/`
+- [ ] **19.5** Claude Code CLI is available: `docker compose exec aios which claude` -- should print a path
+- [ ] **19.6** Audit log directory: `docker compose exec aios ls -la /home/aios/.config/aios/logs/` -- should exist or be creatable
 
 ---
 
-## 17. Automated Test Suite
+## 20. Automated Test Suite
 
 Run inside Docker or locally to confirm all automated tests pass:
 
@@ -530,9 +665,9 @@ docker compose exec aios bash -c "cd /app && pip install pytest pytest-cov pytes
 pytest tests/ -v
 ```
 
-- [ ] **17.1** All 454 tests pass
-- [ ] **17.2** No test failures or errors
-- [ ] **17.3** Skipped tests are only platform-specific (Windows vs Linux)
+- [ ] **20.1** All 608 tests pass
+- [ ] **20.2** No test failures or errors
+- [ ] **20.3** Skipped tests are only platform-specific (Windows vs Linux)
 
 ---
 
@@ -540,8 +675,8 @@ pytest tests/ -v
 
 | Category | Tests | Passed | Failed |
 |----------|-------|--------|--------|
-| Shell Commands | 19 | | |
-| Plugin System | 9 | | |
+| Shell Commands | 20 | | |
+| Skill System | 9 | | |
 | Caching System | 8 | | |
 | Rate Limiting | 3 | | |
 | Session Persistence | 10 | | |
@@ -549,21 +684,24 @@ pytest tests/ -v
 | File Content Display | 3 | | |
 | Error Handling | 3 | | |
 | Claude Integration | 8 | | |
-| Sudo, Timeouts & Streaming | 7 | | |
+| Sudo, Timeouts & Streaming | 10 | | |
 | Background Tasks | 32 | | |
 | Claude Code Interactive | 31 | | |
 | Streaming Responses | 6 | | |
 | Interactive Config Menu | 15 | | |
 | Context Window Management | 11 | | |
-| Docker-Specific | 5 | | |
+| Multi-Step Progress | 8 | | |
+| Exponential Backoff & Circuit Breaker | 15 | | |
+| Audit Logging | 4 | | |
+| Docker-Specific | 6 | | |
 | Automated Tests | 3 | | |
-| **Total** | **179** | | |
+| **Total** | **211** | | |
 
 ---
 
 **Tester**: _______________
 **Date**: _______________
-**Version**: 0.8.10
+**Version**: 0.10.3
 **Environment**: Docker / Local (circle one)
 **OS**: _______________
 **Python**: _______________
