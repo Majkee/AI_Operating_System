@@ -19,7 +19,7 @@ from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.styles import Style as PTStyle
 
-from .ui.completions import AIOSCompleter, create_status_prompt
+from .ui.completions import AIOSCompleter, create_bottom_toolbar
 from .tasks import TaskManager, TaskStatus
 from .tasks.browser import TaskBrowser
 from .code import CodeRunner, CodingRequestDetector
@@ -856,10 +856,15 @@ class AIOSShell:
                     )
                     done_task.mark_notified()
 
-                # Get user input with status bar prompt (Claude Code style)
-                # Status bar shows tokens and tasks on separator line above "You: "
+                # Print separator line before prompt (Claude Code style)
+                self.ui.print_separator()
+
+                # Get user input with styled prompt
+                # Bottom toolbar includes separator line above it, token counter, and task info
                 user_input = self._prompt_session.prompt(
-                    create_status_prompt(
+                    HTML('<prompt>You: </prompt>'),
+                    bottom_toolbar=create_bottom_toolbar(
+                        self._prompt_session,
                         task_manager=self.task_manager,
                         client=self.client,
                         terminal_width=self.ui.console.width
