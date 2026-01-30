@@ -359,6 +359,80 @@ class OpenAIClient(BaseClient):
 
 ---
 
+## Context Management & Summarization
+
+AIOS uses a reusable `ContextManager` component for automatic conversation summarization across all providers.
+
+### How It Works
+
+1. **Track Messages**: All user, assistant, and tool messages are tracked locally
+2. **Monitor Usage**: Token usage is estimated using character-based counting (~4 chars/token)
+3. **Auto-Summarize**: When usage exceeds `summarize_threshold` (default 75%), older messages are summarized
+4. **Preserve Recent**: The most recent messages (default 6) are always kept verbatim
+
+### OpenAI-Specific Behavior
+
+For OpenAI, summarization integrates with response chaining:
+
+1. When summarization triggers, the response chain is broken (`previous_response_id = None`)
+2. The summary is included in the system prompt
+3. A new response chain starts with the summarized context
+4. If `CONTEXT_LENGTH_EXCEEDED` error occurs, auto-summarizes and retries
+
+### Configuration
+
+```toml
+[api]
+# Maximum tokens for conversation history (default: 150000)
+context_budget = 150000
+
+# Trigger summarization at this percentage (default: 0.75 = 75%)
+summarize_threshold = 0.75
+
+# Always keep at least this many recent messages (default: 6)
+min_recent_messages = 6
+```
+
+### ContextManager API
+
+```python
+from aios.providers import ContextManager
+
+# Create with custom summarization function
+manager = ContextManager(
+    summarize_fn=my_summarize_function,
+    context_budget=150000,
+    summarize_threshold=0.75,
+    min_recent_messages=6,
+)
+
+# Add messages
+manager.add_message("user", "Hello")
+manager.add_message("assistant", "Hi there!")
+
+# Check and summarize if needed
+if manager.check_and_summarize():
+    print("Conversation was summarized")
+
+# Get messages (includes summary as system message if present)
+messages = manager.get_messages()
+
+# Get statistics
+stats = manager.get_stats()
+print(f"Tokens: {stats.total_tokens}, Summarized: {stats.summarized_message_count}")
+```
+
+### Provider Comparison
+
+| Feature | Anthropic | OpenAI | LM Studio |
+|---------|-----------|--------|-----------|
+| Summarization | ✅ Built-in | ✅ Via ContextManager | ✅ Via ContextManager |
+| Default Budget | 150k tokens | 150k tokens | 32k tokens |
+| Summary Location | Injected in history | System prompt | System prompt |
+| Auto-Recovery | Yes | Yes (on context error) | Yes |
+
+---
+
 ## Error Handling
 
 ### OpenAI-Specific Errors
