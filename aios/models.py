@@ -21,6 +21,8 @@ __all__ = [
     "get_default_model",
     "get_default_model_for_provider",
     "is_gpt5_model",
+    "is_reasoning_model",
+    "supports_verbosity",
 ]
 
 
@@ -281,5 +283,41 @@ def is_gpt5_model(model_id: str) -> bool:
 
     Returns:
         True if this is a GPT-5.x family model
+    """
+    return model_id.startswith("gpt-5")
+
+
+def is_reasoning_model(model_id: str) -> bool:
+    """Check if the model supports reasoning effort parameter.
+
+    Models that support reasoning:
+    - GPT-5.x family (gpt-5.2, gpt-5.2-pro, gpt-5-mini, etc.)
+    - o-series models (o1, o3, o3-mini, o4-mini, etc.)
+
+    Args:
+        model_id: The model ID to check
+
+    Returns:
+        True if this model supports reasoning effort
+    """
+    # GPT-5.x family
+    if model_id.startswith("gpt-5"):
+        return True
+    # o-series reasoning models (o1, o3, o3-mini, o4-mini, etc.)
+    if model_id.startswith("o1") or model_id.startswith("o3") or model_id.startswith("o4"):
+        return True
+    return False
+
+
+def supports_verbosity(model_id: str) -> bool:
+    """Check if the model supports verbosity parameter.
+
+    Currently only GPT-5.x models support the verbosity parameter.
+
+    Args:
+        model_id: The model ID to check
+
+    Returns:
+        True if this model supports verbosity
     """
     return model_id.startswith("gpt-5")

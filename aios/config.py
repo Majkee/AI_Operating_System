@@ -52,6 +52,12 @@ class APIConfig(BaseModel):
         description="Always keep at least this many recent messages (2-20)"
     )
 
+    # OpenAI-specific settings
+    parallel_tool_calls: bool = Field(
+        default=True,
+        description="Allow OpenAI to call multiple tools in parallel (OpenAI provider only)"
+    )
+
 
 class SafetyConfig(BaseModel):
     """Safety and guardrails configuration."""

@@ -43,6 +43,11 @@ summarize_threshold = 0.75
 # Higher values preserve more recent context, lower values save more tokens
 min_recent_messages = 6
 
+# === OpenAI-Specific Settings ===
+# Allow OpenAI to call multiple tools in parallel (OpenAI provider only)
+# Set to false to force sequential tool execution
+parallel_tool_calls = true
+
 [safety]
 # Require confirmation for potentially dangerous commands
 require_confirmation = true

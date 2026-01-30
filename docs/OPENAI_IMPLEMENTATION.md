@@ -76,11 +76,21 @@ BaseClient (ABC)
 ### Model Detection
 
 ```python
-from aios.models import is_gpt5_model
+from aios.models import is_gpt5_model, is_reasoning_model, supports_verbosity
 
+# GPT-5.x family detection
 is_gpt5_model("gpt-5.2")      # True
 is_gpt5_model("gpt-5-mini")   # True
 is_gpt5_model("gpt-4o")       # False
+
+# Reasoning support detection (GPT-5.x + o-series)
+is_reasoning_model("gpt-5.2")   # True
+is_reasoning_model("o3-mini")   # True
+is_reasoning_model("gpt-4o")    # False
+
+# Verbosity support (GPT-5.x only)
+supports_verbosity("gpt-5.2")   # True
+supports_verbosity("o3-mini")   # False
 ```
 
 ---
@@ -208,6 +218,9 @@ OpenAI's strict mode (`strict: true`) enforces:
 1. **ALL properties must be in `required`**: No optional parameters by omission
 2. **`additionalProperties: false`**: No extra fields allowed
 3. **Nullable types for optional params**: Use `["type", "null"]` union
+4. **Nested objects**: All nested object schemas must also follow these rules
+
+The tool converter automatically applies these rules recursively to handle nested objects and array items.
 
 ### Conversion Function
 
@@ -355,10 +368,17 @@ The client converts OpenAI SDK exceptions to user-friendly `OpenAIError`:
 | SDK Exception | Error Code | User Message |
 |---------------|------------|--------------|
 | `AuthenticationError` | `AUTH_ERROR` | Invalid API key |
-| `RateLimitError` | `RATE_LIMIT` / `QUOTA_EXCEEDED` | Rate limited or quota exceeded |
+| `RateLimitError` | `RATE_LIMIT` | Rate limited |
+| `RateLimitError` | `TOKEN_RATE_LIMIT` | Token rate limited |
+| `RateLimitError` | `QUOTA_EXCEEDED` | Quota exceeded |
 | `APIConnectionError` | `CONNECTION_ERROR` | Network issue |
 | `APITimeoutError` | `TIMEOUT` | Request timed out |
-| `BadRequestError` | `BAD_REQUEST` / `INVALID_MODEL` | Invalid request or model |
+| `BadRequestError` | `INVALID_MODEL` | Invalid model name |
+| `BadRequestError` | `CONTEXT_LENGTH_EXCEEDED` | Conversation too long |
+| `BadRequestError` | `INVALID_SCHEMA` | Invalid function schema |
+| `BadRequestError` | `CONTENT_POLICY` | Content policy violation |
+| `BadRequestError` | `BAD_REQUEST` | Other bad request |
+| `APIError` | `SERVER_OVERLOADED` | Servers overloaded |
 
 ### Error Handler
 
@@ -404,6 +424,9 @@ provider = "openai"
 model = "gpt-5.2"
 max_tokens = 4096
 openai_api_key = "sk-..."  # Or use environment variable
+
+# OpenAI-specific settings
+parallel_tool_calls = true  # Allow multiple tool calls in parallel
 ```
 
 ### Programmatic Configuration

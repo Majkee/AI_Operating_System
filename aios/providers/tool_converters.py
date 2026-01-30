@@ -20,12 +20,13 @@ from typing import Any
 
 
 def _make_schema_strict_compatible(schema: dict[str, Any]) -> dict[str, Any]:
-    """Convert a schema to be OpenAI strict mode compatible.
+    """Convert a schema to be OpenAI strict mode compatible (recursive).
 
     OpenAI strict mode requires:
     - ALL properties must be in the 'required' array
     - additionalProperties must be false
     - For optional params, use type union with null: ["string", "null"]
+    - Nested objects must also follow these rules
 
     Args:
         schema: Original JSON schema
@@ -33,32 +34,64 @@ def _make_schema_strict_compatible(schema: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Strict-mode compatible schema
     """
-    # Deep copy to avoid mutating original
+    # Deep copy to avoid mutating original (only at top level)
     schema = copy.deepcopy(schema)
+    return _apply_strict_mode(schema)
 
+
+def _apply_strict_mode(schema: dict[str, Any], original_required: set[str] | None = None) -> dict[str, Any]:
+    """Recursively apply strict mode transformations to a schema.
+
+    Args:
+        schema: Schema to transform (modified in place)
+        original_required: Set of originally required property names (for nullable detection)
+
+    Returns:
+        Transformed schema
+    """
     properties = schema.get("properties", {})
-    original_required = set(schema.get("required", []))
 
-    # Make all properties required
-    all_property_names = list(properties.keys())
-    schema["required"] = all_property_names
+    if properties:
+        # Track which properties were originally required
+        if original_required is None:
+            original_required = set(schema.get("required", []))
 
-    # For properties that weren't originally required, make them nullable
-    for prop_name, prop_schema in properties.items():
-        if prop_name not in original_required:
-            # Make the type nullable by using union with null
-            current_type = prop_schema.get("type")
-            if current_type and current_type != "null":
-                if isinstance(current_type, list):
-                    # Already a list, add null if not present
-                    if "null" not in current_type:
-                        prop_schema["type"] = current_type + ["null"]
-                else:
-                    # Single type, convert to list with null
-                    prop_schema["type"] = [current_type, "null"]
+        # Make all properties required
+        all_property_names = list(properties.keys())
+        schema["required"] = all_property_names
 
-    # Ensure additionalProperties is false
-    schema["additionalProperties"] = False
+        # Process each property
+        for prop_name, prop_schema in properties.items():
+            # For properties that weren't originally required, make them nullable
+            if prop_name not in original_required:
+                current_type = prop_schema.get("type")
+                if current_type and current_type != "null":
+                    if isinstance(current_type, list):
+                        # Already a list, add null if not present
+                        if "null" not in current_type:
+                            prop_schema["type"] = current_type + ["null"]
+                    else:
+                        # Single type, convert to list with null
+                        prop_schema["type"] = [current_type, "null"]
+
+            # Recursively process nested objects
+            if prop_schema.get("type") == "object" or (
+                isinstance(prop_schema.get("type"), list) and "object" in prop_schema.get("type", [])
+            ):
+                nested_required = set(prop_schema.get("required", []))
+                _apply_strict_mode(prop_schema, nested_required)
+
+            # Process array items if they are objects
+            if prop_schema.get("type") == "array" or (
+                isinstance(prop_schema.get("type"), list) and "array" in prop_schema.get("type", [])
+            ):
+                items = prop_schema.get("items", {})
+                if isinstance(items, dict) and items.get("type") == "object":
+                    items_required = set(items.get("required", []))
+                    _apply_strict_mode(items, items_required)
+
+        # Ensure additionalProperties is false
+        schema["additionalProperties"] = False
 
     return schema
 

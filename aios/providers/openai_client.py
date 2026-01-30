@@ -28,7 +28,7 @@ from openai import (
 )
 
 from .base import BaseClient, AssistantResponse
-from ..models import is_gpt5_model
+from ..models import is_gpt5_model, is_reasoning_model, supports_verbosity
 
 
 class OpenAIError(Exception):
@@ -50,11 +50,17 @@ def handle_openai_error(error: Exception) -> OpenAIError:
             original_error=error
         )
     elif isinstance(error, RateLimitError):
-        error_msg = str(error)
-        if "insufficient_quota" in error_msg.lower():
+        error_msg = str(error).lower()
+        if "insufficient_quota" in error_msg:
             return OpenAIError(
                 "OpenAI quota exceeded. Please add credits at https://platform.openai.com/settings/organization/billing",
                 error_code="QUOTA_EXCEEDED",
+                original_error=error
+            )
+        if "tokens per" in error_msg:
+            return OpenAIError(
+                "OpenAI token rate limit reached. Please wait a moment and try again.",
+                error_code="TOKEN_RATE_LIMIT",
                 original_error=error
             )
         return OpenAIError(
@@ -75,21 +81,60 @@ def handle_openai_error(error: Exception) -> OpenAIError:
             original_error=error
         )
     elif isinstance(error, BadRequestError):
-        error_msg = str(error)
-        if "model" in error_msg.lower():
+        error_msg = str(error).lower()
+        original_msg = str(error)
+
+        # Check for context length exceeded
+        if "context_length_exceeded" in error_msg or "maximum context length" in error_msg:
             return OpenAIError(
-                f"Invalid model specified. Please check the model name in your config.",
+                "Conversation too long for this model. Consider starting a new conversation or use /clear.",
+                error_code="CONTEXT_LENGTH_EXCEEDED",
+                original_error=error
+            )
+
+        # Check for invalid model
+        if "model" in error_msg and ("not found" in error_msg or "does not exist" in error_msg):
+            return OpenAIError(
+                "Invalid model specified. Please check the model name in your config.",
                 error_code="INVALID_MODEL",
                 original_error=error
             )
+
+        # Check for invalid function schema
+        if "schema" in error_msg or "function" in error_msg:
+            return OpenAIError(
+                f"Invalid function schema: {original_msg[:200]}",
+                error_code="INVALID_SCHEMA",
+                original_error=error
+            )
+
+        # Check for content policy violation
+        if "content" in error_msg and "policy" in error_msg:
+            return OpenAIError(
+                "Request rejected due to content policy. Please rephrase your request.",
+                error_code="CONTENT_POLICY",
+                original_error=error
+            )
+
         return OpenAIError(
-            f"Invalid request to OpenAI: {error_msg[:200]}",
+            f"Invalid request to OpenAI: {original_msg[:200]}",
             error_code="BAD_REQUEST",
             original_error=error
         )
     elif isinstance(error, APIError):
+        error_msg = str(error).lower()
+        original_msg = str(error)
+
+        # Check for server overload
+        if "overloaded" in error_msg or "503" in error_msg:
+            return OpenAIError(
+                "OpenAI servers are currently overloaded. Please try again later.",
+                error_code="SERVER_OVERLOADED",
+                original_error=error
+            )
+
         return OpenAIError(
-            f"OpenAI API error: {str(error)[:200]}",
+            f"OpenAI API error: {original_msg[:200]}",
             error_code="API_ERROR",
             original_error=error
         )
@@ -225,6 +270,9 @@ class OpenAIClient(BaseClient):
         # Verbosity: low, medium (default), high
         self._verbosity: Optional[str] = None  # None = use model default (medium)
 
+        # Parallel tool calls configuration
+        self._parallel_tool_calls: bool = config.api.parallel_tool_calls
+
         # Simple conversation tracking
         self._message_count: int = 0
 
@@ -232,7 +280,7 @@ class OpenAIClient(BaseClient):
         self,
         effort: Optional[Literal["none", "low", "medium", "high", "xhigh"]]
     ) -> None:
-        """Set reasoning effort for GPT-5.2+ models.
+        """Set reasoning effort for GPT-5.2+ and o-series models.
 
         Controls how many reasoning tokens the model generates before producing a response.
         - none: Lowest latency, minimal reasoning (default for GPT-5.2)
@@ -243,9 +291,17 @@ class OpenAIClient(BaseClient):
 
         Args:
             effort: Reasoning effort level or None for model default
+
+        Raises:
+            ValueError: If effort level is invalid
         """
         if effort is not None and effort not in self.REASONING_EFFORTS:
             raise ValueError(f"Invalid reasoning effort: {effort}. Valid: {self.REASONING_EFFORTS}")
+        if effort is not None and not self._supports_reasoning():
+            logger.warning(
+                f"Model '{self.model}' may not support reasoning effort. "
+                f"Supported models: GPT-5.x family, o-series (o1, o3, o4)."
+            )
         self._reasoning_effort = effort
 
     def set_verbosity(
@@ -259,16 +315,34 @@ class OpenAIClient(BaseClient):
         - medium: Balanced (default)
         - high: Thorough explanations, detailed code
 
+        Note: Only GPT-5.x models support the verbosity parameter.
+
         Args:
             verbosity: Verbosity level or None for model default
+
+        Raises:
+            ValueError: If verbosity level is invalid
         """
         if verbosity is not None and verbosity not in self.VERBOSITY_LEVELS:
             raise ValueError(f"Invalid verbosity: {verbosity}. Valid: {self.VERBOSITY_LEVELS}")
+        if verbosity is not None and not self._supports_verbosity():
+            logger.warning(
+                f"Model '{self.model}' does not support verbosity parameter. "
+                f"Only GPT-5.x models support this feature."
+            )
         self._verbosity = verbosity
 
     def _is_gpt5_model(self) -> bool:
         """Check if current model is GPT-5.x family."""
         return is_gpt5_model(self.model)
+
+    def _supports_reasoning(self) -> bool:
+        """Check if current model supports reasoning effort parameter."""
+        return is_reasoning_model(self.model)
+
+    def _supports_verbosity(self) -> bool:
+        """Check if current model supports verbosity parameter."""
+        return supports_verbosity(self.model)
 
     def get_model(self) -> str:
         """Get the current model ID."""
@@ -307,16 +381,16 @@ class OpenAIClient(BaseClient):
         # Only add tools if we have any
         if tools:
             params["tools"] = tools
+            # Allow parallel tool calls if configured
+            params["parallel_tool_calls"] = self._parallel_tool_calls
 
-        # Add GPT-5.2 specific parameters
-        if self._is_gpt5_model():
-            # Reasoning effort (GPT-5.2 default is "none")
-            if self._reasoning_effort is not None:
-                params["reasoning"] = {"effort": self._reasoning_effort}
+        # Add reasoning parameters for models that support it (GPT-5.x, o-series)
+        if self._reasoning_effort is not None and self._supports_reasoning():
+            params["reasoning"] = {"effort": self._reasoning_effort}
 
-            # Verbosity (default is "medium")
-            if self._verbosity is not None:
-                params["text"] = {"verbosity": self._verbosity}
+        # Add verbosity for models that support it (GPT-5.x only)
+        if self._verbosity is not None and self._supports_verbosity():
+            params["text"] = {"verbosity": self._verbosity}
 
         return params
 
@@ -485,11 +559,16 @@ class OpenAIClient(BaseClient):
             "provider": "openai",
             "model": self.model,
             "is_gpt5_model": self._is_gpt5_model(),
+            "supports_reasoning": self._supports_reasoning(),
+            "supports_verbosity": self._supports_verbosity(),
         }
 
-        # Add GPT-5.2 specific stats
-        if self._is_gpt5_model():
+        # Add reasoning stats if supported
+        if self._supports_reasoning():
             stats["reasoning_effort"] = self._reasoning_effort or "none (default)"
+
+        # Add verbosity stats if supported
+        if self._supports_verbosity():
             stats["verbosity"] = self._verbosity or "medium (default)"
 
         return stats
