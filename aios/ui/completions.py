@@ -325,12 +325,43 @@ def _compute_left_toolbar(text: str) -> str:
     return "Press <b>Enter</b> to send to AI assistant"
 
 
-def create_bottom_toolbar(prompt_session, task_manager=None, terminal_width: int = 120):
+def _format_token_usage(tokens_used: int, token_budget: int) -> tuple[str, str]:
+    """Format token usage with color based on percentage.
+
+    Returns:
+        Tuple of (color, formatted_text)
+    """
+    if token_budget <= 0:
+        return ('#888888', '? tokens')
+
+    percentage = tokens_used / token_budget
+    tokens_left = token_budget - tokens_used
+
+    # Format numbers with K suffix for readability
+    def fmt(n: int) -> str:
+        if n >= 1000:
+            return f"{n / 1000:.1f}K"
+        return str(n)
+
+    # Choose color based on usage
+    if percentage < 0.5:
+        color = '#00aa00'  # Green
+    elif percentage < 0.75:
+        color = '#aaaa00'  # Yellow
+    else:
+        color = '#aa0000'  # Red
+
+    text = f"{fmt(tokens_used)}/{fmt(token_budget)} ({percentage:.0%})"
+    return (color, text)
+
+
+def create_bottom_toolbar(prompt_session, task_manager=None, client=None, terminal_width: int = 120):
     """Return a callable suitable for ``PromptSession.prompt(bottom_toolbar=...)``.
 
     The toolbar text updates dynamically based on the current input buffer.
     When *task_manager* is provided, running/finished task counts and a
     Ctrl+B hint are shown on the right side of the toolbar.
+    When *client* is provided, token usage is displayed with color coding.
 
     Includes a separator line above the toolbar content (Claude Code style).
     """
@@ -340,36 +371,52 @@ def create_bottom_toolbar(prompt_session, task_manager=None, terminal_width: int
         text = buf.text.strip() if buf else ""
         left = _compute_left_toolbar(text)
 
-        right = ""
+        # Build right side parts
+        right_parts = []
+
+        # Token usage from client
+        if client is not None:
+            try:
+                stats = client.get_context_stats()
+                tokens_used = stats.get('tokens_used', stats.get('token_usage', 0))
+                token_budget = stats.get('token_budget', 150000)
+                token_color, token_text = _format_token_usage(tokens_used, token_budget)
+                right_parts.append(('token', token_color, token_text))
+            except Exception:
+                pass  # Skip token display if client doesn't support it
+
+        # Task manager info
         if task_manager is not None:
             running = task_manager.running_count()
             unnotified = len(task_manager.get_unnotified_completions())
-            parts = []
+            task_parts = []
             if running > 0:
-                parts.append(
-                    f"<b>{running}</b> task{'s' if running != 1 else ''} running"
-                )
+                task_parts.append(f"{running} task{'s' if running != 1 else ''}")
             if unnotified > 0:
-                parts.append(f"<b>{unnotified}</b> finished")
-            if parts:
-                right = " | ".join(parts) + " · <b>Ctrl+B</b> tasks"
+                task_parts.append(f"{unnotified} done")
+            if task_parts:
+                right_parts.append(('tasks', '#00aaaa', " | ".join(task_parts) + " · Ctrl+B"))
             elif task_manager.list_tasks():
-                right = "<b>Ctrl+B</b> tasks"
+                right_parts.append(('tasks', '#666666', "Ctrl+B tasks"))
 
         # Build separator line (─ character repeated)
         separator = "─" * terminal_width
 
-        if right:
-            toolbar_content = f"{left}  ·  {right}"
-        else:
-            toolbar_content = left
-
-        # Return separator line + toolbar content using FormattedText
-        # This ensures the separator appears on its own line above the toolbar
-        return FormattedText([
+        # Build formatted text with colors
+        formatted = [
             ('#4466aa', separator),
             ('', '\n'),
-            ('', toolbar_content),
-        ])
+            ('', left),
+        ]
+
+        # Add right side with colors
+        if right_parts:
+            formatted.append(('', '  ·  '))
+            for i, (_, color, text) in enumerate(right_parts):
+                if i > 0:
+                    formatted.append(('#666666', '  ·  '))
+                formatted.append((color, text))
+
+        return FormattedText(formatted)
 
     return _toolbar

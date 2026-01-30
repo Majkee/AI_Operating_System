@@ -860,12 +860,13 @@ class AIOSShell:
                 self.ui.print_separator()
 
                 # Get user input with styled prompt
-                # Bottom toolbar includes separator line above it
+                # Bottom toolbar includes separator line above it, token counter, and task info
                 user_input = self._prompt_session.prompt(
                     HTML('<prompt>You: </prompt>'),
                     bottom_toolbar=create_bottom_toolbar(
                         self._prompt_session,
-                        self.task_manager,
+                        task_manager=self.task_manager,
+                        client=self.client,
                         terminal_width=self.ui.console.width
                     ),
                 ).strip()
