@@ -325,12 +325,14 @@ def _compute_left_toolbar(text: str) -> str:
     return "Press <b>Enter</b> to send to AI assistant"
 
 
-def create_bottom_toolbar(prompt_session, task_manager=None):
+def create_bottom_toolbar(prompt_session, task_manager=None, terminal_width: int = 120):
     """Return a callable suitable for ``PromptSession.prompt(bottom_toolbar=...)``.
 
     The toolbar text updates dynamically based on the current input buffer.
     When *task_manager* is provided, running/finished task counts and a
     Ctrl+B hint are shown on the right side of the toolbar.
+
+    Includes a separator line above the toolbar content (Claude Code style).
     """
 
     def _toolbar():
@@ -354,8 +356,15 @@ def create_bottom_toolbar(prompt_session, task_manager=None):
             elif task_manager.list_tasks():
                 right = "<b>Ctrl+B</b> tasks"
 
+        # Build separator line (─ character repeated)
+        separator = "─" * terminal_width
+
         if right:
-            return HTML(f"{left}  ·  {right}")
-        return HTML(left)
+            toolbar_content = f"{left}  ·  {right}"
+        else:
+            toolbar_content = left
+
+        # Return separator line + toolbar content
+        return HTML(f'<style fg="#4444aa">{separator}</style>\n{toolbar_content}')
 
     return _toolbar
