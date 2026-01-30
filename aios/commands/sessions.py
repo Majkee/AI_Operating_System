@@ -8,7 +8,7 @@ from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..context.session import SessionManager
-    from ..claude.client import ClaudeClient
+    from ..providers.base import BaseClient
     from ..ui.terminal import TerminalUI
 
 
@@ -57,7 +57,7 @@ class SessionCommands:
         self.ui.console.print()
         self.ui.print_info("Use 'resume <session_id>' to continue a previous session.")
 
-    def resume_session(self, session_id: str, claude: Optional["ClaudeClient"] = None) -> None:
+    def resume_session(self, session_id: str, client: Optional["BaseClient"] = None) -> None:
         """Resume a previous session."""
         # Try to load the session
         loaded_session = self.session.load_session(session_id)
@@ -85,25 +85,31 @@ class SessionCommands:
                 self.ui.console.print(f"  {role}: {preview}")
             self.ui.console.print()
 
-        # Restore Claude conversation history if available
-        if claude and msg_count > 0:
-            self._restore_claude_history(loaded_session.messages, claude)
+        # Restore conversation history if client supports it
+        if client and msg_count > 0:
+            self._restore_client_history(loaded_session.messages, client)
             self.ui.print_info("Conversation history restored.")
 
-    def _restore_claude_history(self, messages, claude: "ClaudeClient") -> None:
-        """Restore Claude conversation history from session messages."""
-        # Clear current conversation history
-        claude.clear_history()
+    def _restore_client_history(self, messages, client: "BaseClient") -> None:
+        """Restore conversation history from session messages.
 
-        # Add messages to conversation history
-        for msg in messages[-20:]:  # Keep last 20 messages for context
-            if msg.role == "user":
-                claude.conversation_history.append({
-                    "role": "user",
-                    "content": msg.content,
-                })
-            elif msg.role == "assistant":
-                claude.conversation_history.append({
-                    "role": "assistant",
-                    "content": msg.content,
-                })
+        Only works for clients that have a conversation_history attribute
+        (like AnthropicClient). Other clients may not support history restoration.
+        """
+        # Clear current conversation history
+        client.clear_history()
+
+        # Only add messages if the client supports conversation_history
+        if hasattr(client, 'conversation_history'):
+            # Add messages to conversation history
+            for msg in messages[-20:]:  # Keep last 20 messages for context
+                if msg.role == "user":
+                    client.conversation_history.append({
+                        "role": "user",
+                        "content": msg.content,
+                    })
+                elif msg.role == "assistant":
+                    client.conversation_history.append({
+                        "role": "assistant",
+                        "content": msg.content,
+                    })

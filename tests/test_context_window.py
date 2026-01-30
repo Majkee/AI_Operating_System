@@ -3,8 +3,8 @@
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 
+# Import from backward-compatible location
 from aios.claude.client import (
-    ClaudeClient,
     estimate_tokens,
     estimate_message_tokens,
     estimate_history_tokens,
@@ -13,6 +13,9 @@ from aios.claude.client import (
     MIN_RECENT_MESSAGES,
     CHARS_PER_TOKEN,
 )
+
+# Import AnthropicClient directly for tests (ClaudeClient is deprecated wrapper)
+from aios.providers.anthropic_client import AnthropicClient
 
 
 class TestTokenEstimation:
@@ -95,8 +98,8 @@ class TestTokenEstimation:
 class TestContextWindowManagement:
     """Test context window management in ClaudeClient."""
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_client_initializes_context_fields(self, mock_anthropic, mock_get_config):
         """Client initializes context management fields."""
         mock_config = Mock()
@@ -108,7 +111,7 @@ class TestContextWindowManagement:
         mock_config.api.min_recent_messages = 8
         mock_get_config.return_value = mock_config
 
-        client = ClaudeClient()
+        client = AnthropicClient()
 
         assert client.context_budget == 100000
         assert client.summarize_threshold == 0.8
@@ -116,8 +119,8 @@ class TestContextWindowManagement:
         assert client._conversation_summary is None
         assert client._summarized_message_count == 0
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_client_uses_default_thresholds(self, mock_anthropic, mock_get_config):
         """Client falls back to defaults when config values missing."""
         mock_config = Mock()
@@ -130,14 +133,14 @@ class TestContextWindowManagement:
         del mock_config.api.min_recent_messages
         mock_get_config.return_value = mock_config
 
-        client = ClaudeClient()
+        client = AnthropicClient()
 
         assert client.context_budget == DEFAULT_CONTEXT_BUDGET
         assert client.summarize_threshold == SUMMARIZE_THRESHOLD
         assert client.min_recent_messages == MIN_RECENT_MESSAGES
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_get_context_usage(self, mock_anthropic, mock_get_config):
         """Test context usage calculation."""
         mock_config = Mock()
@@ -149,7 +152,7 @@ class TestContextWindowManagement:
         mock_config.api.min_recent_messages = MIN_RECENT_MESSAGES
         mock_get_config.return_value = mock_config
 
-        client = ClaudeClient()
+        client = AnthropicClient()
         client.conversation_history = [
             {"role": "user", "content": "x" * 400},  # ~100 tokens
         ]
@@ -158,8 +161,8 @@ class TestContextWindowManagement:
         assert tokens > 0
         assert 0 < percentage < 1
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_needs_summarization_false_when_under_threshold(self, mock_anthropic, mock_get_config):
         """No summarization needed when under threshold."""
         mock_config = Mock()
@@ -171,15 +174,15 @@ class TestContextWindowManagement:
         mock_config.api.min_recent_messages = MIN_RECENT_MESSAGES
         mock_get_config.return_value = mock_config
 
-        client = ClaudeClient()
+        client = AnthropicClient()
         client.conversation_history = [
             {"role": "user", "content": "Hello"},
         ]
 
         assert not client._needs_summarization()
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_needs_summarization_true_when_over_threshold(self, mock_anthropic, mock_get_config):
         """Summarization needed when over threshold."""
         mock_config = Mock()
@@ -191,7 +194,7 @@ class TestContextWindowManagement:
         mock_config.api.min_recent_messages = MIN_RECENT_MESSAGES
         mock_get_config.return_value = mock_config
 
-        client = ClaudeClient()
+        client = AnthropicClient()
         # Add enough messages to exceed 75% of 100 tokens
         client.conversation_history = [
             {"role": "user", "content": "x" * 400},  # ~100 tokens, well over budget
@@ -199,8 +202,8 @@ class TestContextWindowManagement:
 
         assert client._needs_summarization()
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_clear_history_clears_summary(self, mock_anthropic, mock_get_config):
         """Clear history also clears summary state."""
         mock_config = Mock()
@@ -212,7 +215,7 @@ class TestContextWindowManagement:
         mock_config.api.min_recent_messages = MIN_RECENT_MESSAGES
         mock_get_config.return_value = mock_config
 
-        client = ClaudeClient()
+        client = AnthropicClient()
         client.conversation_history = [{"role": "user", "content": "test"}]
         client._conversation_summary = "Previous summary"
         client._summarized_message_count = 10
@@ -223,8 +226,8 @@ class TestContextWindowManagement:
         assert client._conversation_summary is None
         assert client._summarized_message_count == 0
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_get_context_stats(self, mock_anthropic, mock_get_config):
         """Test context stats method."""
         mock_config = Mock()
@@ -236,7 +239,7 @@ class TestContextWindowManagement:
         mock_config.api.min_recent_messages = MIN_RECENT_MESSAGES
         mock_get_config.return_value = mock_config
 
-        client = ClaudeClient()
+        client = AnthropicClient()
         client.conversation_history = [{"role": "user", "content": "test"}]
         client._summarized_message_count = 5
 
@@ -254,8 +257,8 @@ class TestContextWindowManagement:
 class TestSummarization:
     """Test conversation summarization."""
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_format_messages_for_summary(self, mock_anthropic, mock_get_config):
         """Test message formatting for summarization."""
         mock_config = Mock()
@@ -267,7 +270,7 @@ class TestSummarization:
         mock_config.api.min_recent_messages = MIN_RECENT_MESSAGES
         mock_get_config.return_value = mock_config
 
-        client = ClaudeClient()
+        client = AnthropicClient()
 
         messages = [
             {"role": "user", "content": "Hello"},
@@ -279,8 +282,8 @@ class TestSummarization:
         assert "USER: Hello" in formatted
         assert "ASSISTANT: Hi there!" in formatted
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_summarize_history_keeps_recent_messages(self, mock_anthropic, mock_get_config):
         """Summarization keeps recent messages intact."""
         mock_config = Mock()
@@ -303,7 +306,7 @@ class TestSummarization:
         mock_api_client.messages.create.return_value = mock_response
         mock_anthropic.return_value = mock_api_client
 
-        client = ClaudeClient()
+        client = AnthropicClient()
 
         # Add 10 messages
         client.conversation_history = [
@@ -317,8 +320,8 @@ class TestSummarization:
         # Last messages should be preserved
         assert client.conversation_history[-1]["content"] == "Message 9"
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_summarize_history_sets_summary(self, mock_anthropic, mock_get_config):
         """Summarization creates and stores summary."""
         mock_config = Mock()
@@ -341,7 +344,7 @@ class TestSummarization:
         mock_api_client.messages.create.return_value = mock_response
         mock_anthropic.return_value = mock_api_client
 
-        client = ClaudeClient()
+        client = AnthropicClient()
         client.conversation_history = [
             {"role": "user", "content": f"Message {i}"} for i in range(10)
         ]
@@ -351,8 +354,8 @@ class TestSummarization:
         assert client._conversation_summary == "This is the summary"
         assert client._summarized_message_count > 0
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_summarize_history_handles_failure(self, mock_anthropic, mock_get_config):
         """Summarization falls back to truncation on failure."""
         mock_config = Mock()
@@ -368,7 +371,7 @@ class TestSummarization:
         mock_client.messages.create.side_effect = Exception("API Error")
         mock_anthropic.return_value = mock_client
 
-        client = ClaudeClient()
+        client = AnthropicClient()
         client.conversation_history = [
             {"role": "user", "content": f"Message {i}"} for i in range(10)
         ]
@@ -379,8 +382,8 @@ class TestSummarization:
         # History should be truncated to min_recent_messages
         assert len(client.conversation_history) == 6
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_summarize_skipped_when_few_messages(self, mock_anthropic, mock_get_config):
         """Summarization skipped when not enough messages."""
         mock_config = Mock()
@@ -392,7 +395,7 @@ class TestSummarization:
         mock_config.api.min_recent_messages = MIN_RECENT_MESSAGES
         mock_get_config.return_value = mock_config
 
-        client = ClaudeClient()
+        client = AnthropicClient()
         client.conversation_history = [
             {"role": "user", "content": "Hello"},
         ]
@@ -407,8 +410,8 @@ class TestSummarization:
 class TestSystemPromptWithSummary:
     """Test system prompt includes summary when available."""
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_system_prompt_includes_summary(self, mock_anthropic, mock_get_config):
         """System prompt includes conversation summary."""
         mock_config = Mock()
@@ -420,7 +423,7 @@ class TestSystemPromptWithSummary:
         mock_config.api.min_recent_messages = MIN_RECENT_MESSAGES
         mock_get_config.return_value = mock_config
 
-        client = ClaudeClient()
+        client = AnthropicClient()
         client._conversation_summary = "User asked about disk space. Found 50GB free."
 
         prompt = client._build_system_prompt()
@@ -428,8 +431,8 @@ class TestSystemPromptWithSummary:
         assert "Earlier Conversation Summary" in prompt
         assert "disk space" in prompt
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_system_prompt_without_summary(self, mock_anthropic, mock_get_config):
         """System prompt works without summary."""
         mock_config = Mock()
@@ -441,7 +444,7 @@ class TestSystemPromptWithSummary:
         mock_config.api.min_recent_messages = MIN_RECENT_MESSAGES
         mock_get_config.return_value = mock_config
 
-        client = ClaudeClient()
+        client = AnthropicClient()
 
         prompt = client._build_system_prompt()
 
@@ -501,8 +504,8 @@ class TestConfigDefaults:
 class TestContextStatsIncludesConfig:
     """Test context stats include new config values."""
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_context_stats_includes_min_recent_messages(self, mock_anthropic, mock_get_config):
         """Context stats include min_recent_messages."""
         mock_config = Mock()
@@ -514,7 +517,7 @@ class TestContextStatsIncludesConfig:
         mock_config.api.min_recent_messages = 10
         mock_get_config.return_value = mock_config
 
-        client = ClaudeClient()
+        client = AnthropicClient()
         stats = client.get_context_stats()
 
         assert "min_recent_messages" in stats

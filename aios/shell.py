@@ -23,7 +23,7 @@ from .tasks.browser import TaskBrowser
 from .code import CodeRunner, CodingRequestDetector
 
 from .config import get_config, ensure_config_dirs
-from .claude.client import ClaudeClient
+from .providers import create_client, BaseClient, OpenAIError, LMStudioError
 from .claude.tools import ToolHandler, ToolResult
 from .executor.sandbox import CommandExecutor, InteractiveExecutor
 from .executor.files import FileHandler
@@ -116,8 +116,8 @@ class AIOSShell:
         # Initialize commands
         self._init_commands()
 
-        # Initialize Claude client (may fail if no API key)
-        self.claude: Optional[ClaudeClient] = None
+        # Initialize LLM client (may fail if no API key)
+        self.client: Optional[BaseClient] = None
 
         # Session state
         self.running = False
@@ -589,7 +589,7 @@ class AIOSShell:
             return True
 
         if lower_input in ("config", "/config"):
-            self.config_cmds.interactive_config(self.claude)
+            self.config_cmds.interactive_config(self.client)
             return True
 
         if lower_input in ("credentials", "/credentials"):
@@ -606,7 +606,13 @@ class AIOSShell:
 
         if lower_input.startswith("model ") or lower_input.startswith("/model "):
             model_arg = user_input.split(" ", 1)[1].strip() if " " in user_input else ""
-            self.config_cmds.change_model(model_arg, self.claude)
+            new_provider = self.config_cmds.change_model(model_arg, self.client)
+            if new_provider:
+                # Provider changed - need to recreate client
+                try:
+                    self.client = create_client(self.tool_handler)
+                except ValueError as e:
+                    self.ui.print_error(f"Failed to create {new_provider} client: {e}")
             return True
 
         if lower_input in ("model", "/model"):
@@ -615,7 +621,7 @@ class AIOSShell:
 
         if lower_input.startswith("resume ") or lower_input.startswith("/resume "):
             session_id = user_input.split(" ", 1)[1].strip()
-            self.session_cmds.resume_session(session_id, self.claude)
+            self.session_cmds.resume_session(session_id, self.client)
             return True
 
         # Claude Code commands
@@ -680,9 +686,13 @@ class AIOSShell:
         with self.ui.streaming_response() as handler:
             try:
                 on_text = handler.add_text if use_streaming else None
-                response = self.claude.send_message(user_input, system_context, on_text=on_text)
+                response = self.client.send_message(user_input, system_context, on_text=on_text)
+            except (OpenAIError, LMStudioError) as exc:
+                # Show user-friendly error message with error code
+                self.ui.print_error(f"[{exc.error_code}] {exc.user_message}")
+                return True
             except Exception as exc:
-                self.ui.print_error(f"Error communicating with Claude: {exc}")
+                self.ui.print_error(f"Error communicating with AI: {exc}")
                 return True
 
         self._record_api_usage()
@@ -700,9 +710,13 @@ class AIOSShell:
             with self.ui.streaming_response() as handler:
                 try:
                     on_text = handler.add_text if use_streaming else None
-                    response = self.claude.send_tool_results(tool_results, system_context, on_text=on_text)
+                    response = self.client.send_tool_results(tool_results, system_context, on_text=on_text)
+                except (OpenAIError, LMStudioError) as exc:
+                    # Show user-friendly error message with error code
+                    self.ui.print_error(f"[{exc.error_code}] {exc.user_message}")
+                    return True
                 except Exception as exc:
-                    self.ui.print_error(f"Error communicating with Claude: {exc}")
+                    self.ui.print_error(f"Error communicating with AI: {exc}")
                     return True
 
             self._record_api_usage()
@@ -746,12 +760,18 @@ class AIOSShell:
             except (KeyboardInterrupt, EOFError):
                 self.ui.console.print("\n[yellow]Setup cancelled. You can run it later with: [cyan]aios --setup[/cyan][/yellow]\n")
 
-        # Initialize Claude client
+        # Initialize LLM client (Anthropic, OpenAI, or LM Studio based on config)
         try:
-            self.claude = ClaudeClient(self.tool_handler)
+            self.client = create_client(self.tool_handler)
         except ValueError as e:
             self.ui.print_error(str(e))
-            self.ui.print_info("Please set ANTHROPIC_API_KEY or add it to your config file.")
+            provider = getattr(self.config.api, 'provider', 'anthropic')
+            if provider == 'openai':
+                self.ui.print_info("Please set OPENAI_API_KEY or add openai_api_key to your config file.")
+            elif provider == 'lm_studio':
+                self.ui.print_info("Please ensure LM Studio is running at the configured base URL.")
+            else:
+                self.ui.print_info("Please set ANTHROPIC_API_KEY or add api_key to your config file.")
             self.ui.print_info("You can run the setup wizard with: [cyan]aios --setup[/cyan]")
             return 1
 

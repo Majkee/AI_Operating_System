@@ -339,12 +339,12 @@ class TestErrorRecoveryRetry:
 
 
 class TestClaudeClientRetry:
-    """Tests for ClaudeClient retry integration."""
+    """Tests for AnthropicClient retry integration."""
 
     @pytest.fixture
     def mock_anthropic(self):
         """Mock anthropic module."""
-        with patch("aios.claude.client.anthropic") as mock:
+        with patch("aios.providers.anthropic_client.anthropic") as mock:
             # Set up exception classes
             mock.APIConnectionError = type("APIConnectionError", (Exception,), {})
             mock.RateLimitError = type("RateLimitError", (Exception,), {})
@@ -354,7 +354,7 @@ class TestClaudeClientRetry:
     @pytest.fixture
     def mock_config(self):
         """Mock configuration."""
-        with patch("aios.claude.client.get_config") as mock:
+        with patch("aios.providers.anthropic_client.get_config") as mock:
             config = MagicMock()
             config.api.api_key = "test-key"
             config.api.model = "claude-sonnet-4-5-20250929"
@@ -366,19 +366,19 @@ class TestClaudeClientRetry:
             yield mock
 
     def test_client_has_circuit_breaker(self, mock_anthropic, mock_config):
-        """ClaudeClient initializes with circuit breaker."""
-        from aios.claude.client import ClaudeClient
+        """AnthropicClient initializes with circuit breaker."""
+        from aios.providers.anthropic_client import AnthropicClient
 
-        client = ClaudeClient()
+        client = AnthropicClient()
 
         assert client._circuit_breaker is not None
         assert client._retry_config["max_attempts"] == 3
 
     def test_get_circuit_breaker_stats(self, mock_anthropic, mock_config):
         """get_circuit_breaker_stats returns stats."""
-        from aios.claude.client import ClaudeClient
+        from aios.providers.anthropic_client import AnthropicClient
 
-        client = ClaudeClient()
+        client = AnthropicClient()
         stats = client.get_circuit_breaker_stats()
 
         assert "state" in stats
@@ -387,9 +387,9 @@ class TestClaudeClientRetry:
 
     def test_reset_circuit_breaker(self, mock_anthropic, mock_config):
         """reset_circuit_breaker resets the circuit."""
-        from aios.claude.client import ClaudeClient
+        from aios.providers.anthropic_client import AnthropicClient
 
-        client = ClaudeClient()
+        client = AnthropicClient()
         # Simulate failures
         for _ in range(5):
             client._circuit_breaker.record_failure()
@@ -401,9 +401,9 @@ class TestClaudeClientRetry:
 
     def test_retryable_exceptions_defined(self, mock_anthropic, mock_config):
         """Client defines appropriate retryable exceptions."""
-        from aios.claude.client import ClaudeClient
+        from aios.providers.anthropic_client import AnthropicClient
 
-        client = ClaudeClient()
+        client = AnthropicClient()
 
         assert ConnectionError in client._retryable_exceptions
         assert TimeoutError in client._retryable_exceptions

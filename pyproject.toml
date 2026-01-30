@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aiosys"
-version = "0.11.0"
+version = "0.12.0"
 description = "AI-powered Operating System Interface - Natural language interface for Linux"
 readme = "README.md"
 license = {text = "MIT"}
@@ -28,6 +28,7 @@ classifiers = [
 ]
 dependencies = [
     "anthropic>=0.76.0",
+    "openai>=2.16.0",
     "rich>=14.0.0",
     "prompt-toolkit>=3.0.52",
     "tomli>=2.4.0;python_version<'3.11'",

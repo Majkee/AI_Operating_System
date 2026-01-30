@@ -9,7 +9,7 @@ from pathlib import Path
 
 if TYPE_CHECKING:
     from ..ui.terminal import TerminalUI
-    from ..claude.client import ClaudeClient
+    from ..providers.base import BaseClient
 
 
 def update_toml_value(config_path: Path, section: str, key: str, value: str) -> None:
@@ -75,7 +75,7 @@ class ConfigCommands:
         self.ui = ui
         self.config = config
 
-    def interactive_config(self, claude: Optional["ClaudeClient"] = None) -> None:
+    def interactive_config(self, client: Optional["BaseClient"] = None) -> None:
         """Interactive configuration menu."""
         from rich.table import Table
         from rich.box import ROUNDED
@@ -263,9 +263,9 @@ class ConfigCommands:
                     self.config = get_config()
 
                     # Apply immediate changes
-                    if key == "api.model" and claude:
-                        claude.model = new_value
-                        claude.clear_history()
+                    if key == "api.model" and client:
+                        client.set_model(new_value)
+                        client.clear_history()
                         self.ui.print_info("[dim]Conversation history cleared[/dim]")
 
                     if key == "ui.show_technical_details":
@@ -324,14 +324,24 @@ class ConfigCommands:
         self.ui.console.print(f"\n[bold]Current model:[/bold] [cyan]{current_model_info.name if current_model_info else current_model_id}[/cyan]")
         self.ui.console.print("[dim]To change model, use: [cyan]model <number>[/cyan] or [cyan]model <model-id>[/cyan][/dim]\n")
 
-    def change_model(self, model_arg: str, claude: Optional["ClaudeClient"] = None) -> None:
-        """Change the current model."""
+    def change_model(self, model_arg: str, client: Optional["BaseClient"] = None) -> Optional[str]:
+        """Change the current model.
+
+        Args:
+            model_arg: Model ID, number, or name to switch to
+            client: Current LLM client (will be updated if same provider)
+
+        Returns:
+            New provider name if provider changed and client needs recreation,
+            None otherwise.
+        """
         from ..models import AVAILABLE_MODELS, get_model_by_id
         from ..config import reset_config, get_config
+        from ..providers import get_provider_name
 
         if not model_arg:
             self.show_models()
-            return
+            return None
 
         # Try to parse as number first
         selected_model = None
@@ -353,29 +363,44 @@ class ConfigCommands:
         if not selected_model:
             self.ui.print_error(f"Invalid model: {model_arg}")
             self.ui.print_info("Use 'model' to see available models")
-            return
+            return None
+
+        # Check if provider needs to change
+        current_provider = getattr(self.config.api, 'provider', 'anthropic')
+        new_provider = selected_model.provider
+        provider_changed = current_provider != new_provider
 
         # Update config file (preserves comments and formatting)
         config_file = Path.home() / ".config" / "aios" / "config.toml"
         try:
             update_toml_value(config_file, "api", "model", f'"{selected_model.id}"')
+            if provider_changed:
+                update_toml_value(config_file, "api", "provider", f'"{new_provider}"')
         except Exception as e:
             self.ui.print_error(f"Failed to save config: {e}")
-            return
+            return None
 
         # Reload config
         reset_config()
         self.config = get_config()
 
-        # Update Claude client model
-        if claude:
-            claude.model = selected_model.id
+        # If provider changed, we need to create a new client
+        if provider_changed:
+            self.ui.print_info(f"[green]✓[/green] Switched to [bold]{selected_model.name}[/bold] ({new_provider} provider)")
+            self.ui.print_info("[dim]Conversation history cleared for new provider[/dim]")
+            self.ui.console.print()
+            return new_provider
+
+        # Same provider - just update the model on existing client
+        if client:
+            client.set_model(selected_model.id)
             # Clear conversation history when changing models
-            claude.clear_history()
+            client.clear_history()
             self.ui.print_info(f"[green]✓[/green] Model changed to [bold]{selected_model.name}[/bold]")
             self.ui.print_info("[dim]Conversation history cleared for new model[/dim]")
         else:
             self.ui.print_info(f"[green]✓[/green] Model set to [bold]{selected_model.name}[/bold]")
-            self.ui.print_info("[dim]Model will be used when Claude client is initialized[/dim]")
+            self.ui.print_info("[dim]Model will be used when LLM client is initialized[/dim]")
 
         self.ui.console.print()
+        return None

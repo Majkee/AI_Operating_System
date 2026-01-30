@@ -1,45 +1,137 @@
 """
 Claude API client for AIOS.
 
-Handles communication with the Anthropic API and processes
-tool calls from Claude's responses. Includes automatic context
-window management with summarization to prevent token limit errors.
+DEPRECATED: This module is maintained for backward compatibility.
+Use `aios.providers.create_client()` or `aios.providers.AnthropicClient` instead.
+
+The ClaudeClient class is now an alias for AnthropicClient from the providers package.
 """
 
-import json
+import warnings
 import logging
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, TYPE_CHECKING
 from dataclasses import dataclass, field
 
-import anthropic
-from anthropic.types import Message, ToolUseBlock, TextBlock
+from .tools import ToolHandler
 
-from .tools import ToolHandler, ToolResult
-from ..config import get_config
-from ..errors import ErrorRecovery, CircuitBreaker
+if TYPE_CHECKING:
+    from ..providers.anthropic_client import AnthropicClient as _AnthropicClient
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class ConversationMessage:
-    """A message in the conversation."""
+    """A message in the conversation.
+
+    DEPRECATED: This class is maintained for backward compatibility.
+    """
     role: str  # "user" or "assistant"
     content: str
     tool_calls: list[dict] = field(default_factory=list)
     tool_results: list[dict] = field(default_factory=list)
 
 
-@dataclass
-class AssistantResponse:
-    """Response from the assistant."""
-    text: str
-    tool_calls: list[dict[str, Any]]
-    is_complete: bool
-    requires_action: bool = False
-    pending_confirmations: list[dict] = field(default_factory=list)
+def _get_anthropic_client():
+    """Lazy import to avoid circular dependencies."""
+    from ..providers.anthropic_client import AnthropicClient
+    return AnthropicClient
 
 
+# Re-export AssistantResponse
+def _get_assistant_response():
+    """Lazy import to avoid circular dependencies."""
+    from ..providers.base import AssistantResponse
+    return AssistantResponse
+
+
+# Make AssistantResponse available at module level
+AssistantResponse = None  # Will be set on first access
+
+
+def __getattr__(name):
+    if name == "AssistantResponse":
+        from ..providers.base import AssistantResponse
+        return AssistantResponse
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+class ClaudeClient:
+    """Client for interacting with Claude API.
+
+    DEPRECATED: Use `aios.providers.create_client()` or
+    `aios.providers.AnthropicClient` instead.
+
+    This class is maintained for backward compatibility and wraps
+    AnthropicClient from the providers package.
+    """
+
+    def __init__(self, tool_handler: Optional[ToolHandler] = None):
+        """Initialize the Claude client."""
+        warnings.warn(
+            "ClaudeClient is deprecated. Use create_client() from aios.providers "
+            "or AnthropicClient directly.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        AnthropicClient = _get_anthropic_client()
+        self._client = AnthropicClient(tool_handler)
+
+    def __getattr__(self, name):
+        """Delegate attribute access to the wrapped client."""
+        return getattr(self._client, name)
+
+    @property
+    def model(self) -> str:
+        """Get the current model (for backward compatibility)."""
+        return self._client.get_model()
+
+    @model.setter
+    def model(self, value: str) -> None:
+        """Set the model (for backward compatibility)."""
+        self._client.set_model(value)
+
+    @property
+    def conversation_history(self) -> list:
+        """Get conversation history (for backward compatibility)."""
+        return self._client.conversation_history
+
+    @conversation_history.setter
+    def conversation_history(self, value: list) -> None:
+        """Set conversation history (for backward compatibility)."""
+        self._client.conversation_history = value
+
+    def send_message(self, *args, **kwargs):
+        """Send a message to Claude."""
+        return self._client.send_message(*args, **kwargs)
+
+    def send_tool_results(self, *args, **kwargs):
+        """Send tool results to Claude."""
+        return self._client.send_tool_results(*args, **kwargs)
+
+    def clear_history(self):
+        """Clear conversation history."""
+        return self._client.clear_history()
+
+    def get_history_summary(self):
+        """Get history summary."""
+        return self._client.get_history_summary()
+
+    def get_context_stats(self):
+        """Get context stats."""
+        return self._client.get_context_stats()
+
+    def get_circuit_breaker_stats(self):
+        """Get circuit breaker stats."""
+        return self._client.get_circuit_breaker_stats()
+
+    def reset_circuit_breaker(self):
+        """Reset circuit breaker."""
+        return self._client.reset_circuit_breaker()
+
+
+# Legacy exports for backward compatibility
+# These are now available from the providers package
 SYSTEM_PROMPT = """You are AIOS, a friendly AI assistant that helps users interact with their Debian Linux computer through natural conversation.
 
 ## Your Role
@@ -76,7 +168,6 @@ SYSTEM_PROMPT = """You are AIOS, a friendly AI assistant that helps users intera
 ### Respecting User Decisions
 - CRITICAL: When a tool result contains "USER DECLINED", the user explicitly refused the action
 - Do NOT retry the same operation through alternative tools or methods
-- Do NOT attempt workarounds like using run_command instead of manage_application
 - Simply acknowledge their decision and ask if they need help with something else
 - User refusal is final - respect it completely
 
@@ -131,49 +222,41 @@ This system runs as a non-root user with passwordless sudo.
 - Claude Code is a specialized coding agent that can read, write, edit files, run commands, and search code
 - Simple code questions or small snippets can be answered directly without Claude Code"""
 
-
-# Context window management constants
-# Claude models have different context windows:
-# - claude-sonnet-4: 200k tokens
-# - claude-opus-4: 200k tokens
-# - claude-haiku: 200k tokens
-# We use conservative limits to leave room for system prompt, tools, and response
-
-DEFAULT_CONTEXT_BUDGET = 150_000  # tokens - leave room for response
-SUMMARIZE_THRESHOLD = 0.75  # Trigger summarization at 75% of budget
-MIN_RECENT_MESSAGES = 6  # Always keep at least this many recent messages
-CHARS_PER_TOKEN = 4  # Rough estimate: 1 token ≈ 4 characters for English
+# Context window management constants (for backward compatibility)
+DEFAULT_CONTEXT_BUDGET = 150_000
+SUMMARIZE_THRESHOLD = 0.75
+MIN_RECENT_MESSAGES = 6
+CHARS_PER_TOKEN = 4
 
 
 def estimate_tokens(text: str) -> int:
     """Estimate token count from text length.
 
-    This is a rough heuristic. For English text, ~4 characters per token
-    is a reasonable approximation. JSON/structured content may vary.
+    DEPRECATED: Import from aios.providers.anthropic_client instead.
     """
     return max(1, len(text) // CHARS_PER_TOKEN)
 
 
 def estimate_message_tokens(message: dict) -> int:
-    """Estimate tokens in a conversation message."""
+    """Estimate tokens in a conversation message.
+
+    DEPRECATED: This function is maintained for backward compatibility.
+    """
+    import json
     content = message.get("content", "")
 
     if isinstance(content, str):
         return estimate_tokens(content)
 
-    # List content (tool use, tool results, etc.)
     if isinstance(content, list):
         total = 0
         for block in content:
             if isinstance(block, dict):
-                # Text block
                 if block.get("type") == "text":
                     total += estimate_tokens(block.get("text", ""))
-                # Tool use block - include name and JSON input
                 elif block.get("type") == "tool_use":
                     total += estimate_tokens(block.get("name", ""))
                     total += estimate_tokens(json.dumps(block.get("input", {})))
-                # Tool result
                 elif block.get("type") == "tool_result":
                     total += estimate_tokens(str(block.get("content", "")))
         return max(1, total)
@@ -181,469 +264,9 @@ def estimate_message_tokens(message: dict) -> int:
     return 1
 
 
-def estimate_history_tokens(messages: list[dict]) -> int:
-    """Estimate total tokens in conversation history."""
+def estimate_history_tokens(messages: list) -> int:
+    """Estimate total tokens in conversation history.
+
+    DEPRECATED: This function is maintained for backward compatibility.
+    """
     return sum(estimate_message_tokens(msg) for msg in messages)
-
-
-SUMMARIZATION_PROMPT = """Summarize the following conversation between a user and AIOS (an AI assistant for Linux).
-Focus on:
-1. Key actions taken (files created/modified, commands run, packages installed)
-2. Important information shared (paths, configurations, decisions made)
-3. Context needed for continuing the conversation
-
-Be concise but preserve critical details. Format as a brief narrative summary.
-
-CONVERSATION:
-{conversation}
-
-SUMMARY:"""
-
-
-class ClaudeClient:
-    """Client for interacting with Claude API."""
-
-    def __init__(self, tool_handler: Optional[ToolHandler] = None):
-        """Initialize the Claude client."""
-        config = get_config()
-
-        if not config.api.api_key:
-            raise ValueError(
-                "No API key found. Please set AIOS_API_KEY or ANTHROPIC_API_KEY "
-                "environment variable, or add api_key to your config file."
-            )
-
-        self.client = anthropic.Anthropic(api_key=config.api.api_key)
-        self.model = config.api.model
-        self.max_tokens = config.api.max_tokens
-        self.tool_handler = tool_handler or ToolHandler()
-        self.conversation_history: list[dict] = []
-
-        # Context window management
-        self.context_budget = getattr(config.api, 'context_budget', DEFAULT_CONTEXT_BUDGET)
-        self.summarize_threshold = getattr(config.api, 'summarize_threshold', SUMMARIZE_THRESHOLD)
-        self.min_recent_messages = getattr(config.api, 'min_recent_messages', MIN_RECENT_MESSAGES)
-        self._conversation_summary: Optional[str] = None
-        self._summarized_message_count: int = 0  # How many messages were summarized
-
-        # Retry and circuit breaker configuration
-        self._circuit_breaker = ErrorRecovery.get_circuit_breaker(
-            name="claude_api",
-            failure_threshold=5,
-            recovery_timeout=60.0
-        )
-        self._retry_config = {
-            "max_attempts": 3,
-            "base_delay": 1.0,
-            "max_delay": 30.0,
-            "jitter": True,
-        }
-        # Exceptions that should trigger retry (network/transient errors)
-        self._retryable_exceptions = (
-            anthropic.APIConnectionError,
-            anthropic.RateLimitError,
-            anthropic.InternalServerError,
-            ConnectionError,
-            TimeoutError,
-        )
-
-    def _build_messages(self, user_input: str) -> list[dict]:
-        """Build the messages list for the API call."""
-        messages = self.conversation_history.copy()
-        messages.append({"role": "user", "content": user_input})
-        return messages
-
-    def _get_context_usage(self) -> tuple[int, float]:
-        """Get current context usage in tokens and percentage.
-
-        Returns:
-            Tuple of (tokens_used, percentage_of_budget)
-        """
-        tokens = estimate_history_tokens(self.conversation_history)
-        percentage = tokens / self.context_budget if self.context_budget > 0 else 0
-        return tokens, percentage
-
-    def _needs_summarization(self) -> bool:
-        """Check if conversation history needs summarization."""
-        tokens, percentage = self._get_context_usage()
-        return percentage >= self.summarize_threshold
-
-    def _format_messages_for_summary(self, messages: list[dict]) -> str:
-        """Format messages into readable text for summarization."""
-        lines = []
-        for msg in messages:
-            role = msg.get("role", "unknown").upper()
-            content = msg.get("content", "")
-
-            if isinstance(content, str):
-                lines.append(f"{role}: {content}")
-            elif isinstance(content, list):
-                parts = []
-                for block in content:
-                    if isinstance(block, dict):
-                        if block.get("type") == "text":
-                            parts.append(block.get("text", ""))
-                        elif block.get("type") == "tool_use":
-                            parts.append(f"[Used tool: {block.get('name')}]")
-                        elif block.get("type") == "tool_result":
-                            result = str(block.get("content", ""))[:200]
-                            parts.append(f"[Tool result: {result}...]")
-                if parts:
-                    lines.append(f"{role}: {' '.join(parts)}")
-
-        return "\n".join(lines)
-
-    def _summarize_history(self) -> None:
-        """Summarize older messages to reduce context size.
-
-        Keeps the most recent messages verbatim and summarizes older ones.
-        The summary is stored and prepended to future API calls.
-        """
-        if len(self.conversation_history) <= self.min_recent_messages:
-            return  # Not enough messages to summarize
-
-        # Determine how many messages to summarize
-        # Keep at least min_recent_messages, summarize the rest
-        messages_to_keep = self.min_recent_messages
-        messages_to_summarize = self.conversation_history[:-messages_to_keep]
-
-        if not messages_to_summarize:
-            return
-
-        # Format messages for summarization
-        conversation_text = self._format_messages_for_summary(messages_to_summarize)
-
-        # Include previous summary if exists
-        if self._conversation_summary:
-            conversation_text = f"PREVIOUS SUMMARY:\n{self._conversation_summary}\n\nNEW MESSAGES:\n{conversation_text}"
-
-        try:
-            # Call Claude to create summary (using a smaller, faster model if available)
-            summary_response = self.client.messages.create(
-                model=self.model,
-                max_tokens=1000,  # Summaries should be concise
-                messages=[{
-                    "role": "user",
-                    "content": SUMMARIZATION_PROMPT.format(conversation=conversation_text)
-                }]
-            )
-
-            # Extract summary text
-            summary_text = ""
-            for block in summary_response.content:
-                # Use duck-typing for testability
-                if hasattr(block, 'text'):
-                    summary_text += block.text
-
-            if summary_text:
-                self._conversation_summary = summary_text.strip()
-                self._summarized_message_count += len(messages_to_summarize)
-
-                # Keep only recent messages
-                self.conversation_history = self.conversation_history[-messages_to_keep:]
-
-                logger.info(
-                    f"Summarized {len(messages_to_summarize)} messages. "
-                    f"History now has {len(self.conversation_history)} messages."
-                )
-
-        except Exception as e:
-            # If summarization fails, fall back to simple truncation
-            logger.warning(f"Summarization failed, truncating history: {e}")
-            self.conversation_history = self.conversation_history[-messages_to_keep:]
-
-    def _maybe_manage_context(self) -> None:
-        """Check context usage and summarize if needed."""
-        if self._needs_summarization():
-            logger.info("Context window threshold reached, summarizing history...")
-            self._summarize_history()
-
-    def _build_system_prompt(self, system_context: Optional[str] = None) -> str:
-        """Build system prompt with optional context and conversation summary."""
-        prompt = SYSTEM_PROMPT
-
-        # Add conversation summary if we've summarized older messages
-        if self._conversation_summary:
-            prompt += f"\n\n## Earlier Conversation Summary\n{self._conversation_summary}"
-
-        # Add current system context
-        if system_context:
-            prompt += f"\n\n## Current System Context\n{system_context}"
-
-        return prompt
-
-    def _store_assistant_history(self, response: "AssistantResponse") -> None:
-        """Store assistant response in conversation history."""
-        assistant_content = []
-        if response.text:
-            assistant_content.append({
-                "type": "text",
-                "text": response.text
-            })
-        for tool_call in response.tool_calls:
-            assistant_content.append({
-                "type": "tool_use",
-                "id": tool_call["id"],
-                "name": tool_call["name"],
-                "input": tool_call["input"]
-            })
-        self.conversation_history.append({
-            "role": "assistant",
-            "content": assistant_content
-        })
-
-    def _stream_request(
-        self,
-        system: str,
-        messages: list,
-        on_text: Callable[[str], None]
-    ) -> "Message":
-        """Make a streaming API request, invoking callback for each text delta."""
-        with self.client.messages.stream(
-            model=self.model,
-            max_tokens=self.max_tokens,
-            system=system,
-            tools=self.tool_handler.get_all_tools(),
-            messages=messages,
-        ) as stream:
-            for text in stream.text_stream:
-                on_text(text)
-            return stream.get_final_message()
-
-    def _make_api_call(
-        self,
-        system: str,
-        messages: list,
-        on_text: Optional[Callable[[str], None]] = None
-    ) -> "Message":
-        """
-        Make an API call with retry and circuit breaker.
-
-        Args:
-            system: System prompt
-            messages: Conversation messages
-            on_text: Optional callback for streaming
-
-        Returns:
-            API response message
-
-        Raises:
-            Exception: If all retries fail or circuit breaker is open
-        """
-        def api_call() -> Message:
-            if on_text is not None:
-                return self._stream_request(system, messages, on_text)
-            else:
-                return self.client.messages.create(
-                    model=self.model,
-                    max_tokens=self.max_tokens,
-                    system=system,
-                    tools=self.tool_handler.get_all_tools(),
-                    messages=messages
-                )
-
-        def on_retry(attempt: int, exc: Exception) -> None:
-            logger.warning(
-                f"API call failed (attempt {attempt}), retrying: {type(exc).__name__}: {exc}"
-            )
-
-        result = ErrorRecovery.retry(
-            func=api_call,
-            max_attempts=self._retry_config["max_attempts"],
-            base_delay=self._retry_config["base_delay"],
-            max_delay=self._retry_config["max_delay"],
-            jitter=self._retry_config["jitter"],
-            circuit_breaker=self._circuit_breaker,
-            retryable_exceptions=self._retryable_exceptions,
-            on_retry=on_retry
-        )
-
-        if result.is_err:
-            # Re-raise as exception for callers to handle
-            error = result.error
-            if error.original_exception:
-                raise error.original_exception
-            raise RuntimeError(error.technical_message)
-
-        return result.unwrap()
-
-    def _process_response(self, response: Message) -> AssistantResponse:
-        """Process Claude's response and extract text and tool calls."""
-        text_parts = []
-        tool_calls = []
-        pending_confirmations = []
-
-        for block in response.content:
-            if isinstance(block, TextBlock):
-                text_parts.append(block.text)
-            elif isinstance(block, ToolUseBlock):
-                tool_call = {
-                    "id": block.id,
-                    "name": block.name,
-                    "input": block.input
-                }
-                tool_calls.append(tool_call)
-
-                # Check if this tool requires confirmation
-                tool_input = block.input
-                if isinstance(tool_input, dict) and tool_input.get("requires_confirmation", False):
-                    pending_confirmations.append(tool_call)
-
-        return AssistantResponse(
-            text="\n".join(text_parts),
-            tool_calls=tool_calls,
-            is_complete=(response.stop_reason == "end_turn"),
-            requires_action=(response.stop_reason == "tool_use"),
-            pending_confirmations=pending_confirmations
-        )
-
-    def send_message(
-        self,
-        user_input: str,
-        system_context: Optional[str] = None,
-        on_text: Optional[Callable[[str], None]] = None
-    ) -> AssistantResponse:
-        """Send a message to Claude and get a response.
-
-        Args:
-            user_input: The user's message
-            system_context: Optional system context to append to prompt
-            on_text: Optional callback for streaming text deltas. When provided,
-                     uses streaming API; when None, uses blocking API.
-
-        Returns:
-            AssistantResponse with text and any tool calls
-
-        Note:
-            Uses exponential backoff with jitter for transient failures.
-            Circuit breaker prevents hammering the API after repeated failures.
-        """
-        # Check and manage context window before making request
-        self._maybe_manage_context()
-
-        messages = self._build_messages(user_input)
-        system = self._build_system_prompt(system_context)
-
-        # Make API request with retry and circuit breaker
-        response = self._make_api_call(system, messages, on_text)
-
-        # Add user message to history
-        self.conversation_history.append({
-            "role": "user",
-            "content": user_input
-        })
-
-        # Process and store assistant response
-        assistant_response = self._process_response(response)
-        self._store_assistant_history(assistant_response)
-
-        return assistant_response
-
-    def send_tool_results(
-        self,
-        tool_results: list[dict[str, Any]],
-        system_context: Optional[str] = None,
-        on_text: Optional[Callable[[str], None]] = None
-    ) -> AssistantResponse:
-        """Send tool execution results back to Claude.
-
-        Args:
-            tool_results: List of tool execution results
-            system_context: Optional system context to append to prompt
-            on_text: Optional callback for streaming text deltas. When provided,
-                     uses streaming API; when None, uses blocking API.
-
-        Returns:
-            AssistantResponse with text and any tool calls
-
-        Note:
-            Uses exponential backoff with jitter for transient failures.
-            Circuit breaker prevents hammering the API after repeated failures.
-        """
-        # Check and manage context window before making request
-        self._maybe_manage_context()
-
-        # Add tool results to conversation
-        tool_result_content = []
-        for result in tool_results:
-            tool_result_content.append({
-                "type": "tool_result",
-                "tool_use_id": result["tool_use_id"],
-                "content": result["content"],
-                "is_error": result.get("is_error", False)
-            })
-
-        self.conversation_history.append({
-            "role": "user",
-            "content": tool_result_content
-        })
-
-        system = self._build_system_prompt(system_context)
-
-        # Make API request with retry and circuit breaker
-        response = self._make_api_call(system, self.conversation_history, on_text)
-
-        assistant_response = self._process_response(response)
-        self._store_assistant_history(assistant_response)
-
-        return assistant_response
-
-    def clear_history(self) -> None:
-        """Clear the conversation history and summary."""
-        self.conversation_history = []
-        self._conversation_summary = None
-        self._summarized_message_count = 0
-
-    def get_history_summary(self) -> str:
-        """Get a summary of the conversation history."""
-        if not self.conversation_history and not self._conversation_summary:
-            return "No conversation history."
-
-        summary_parts = []
-
-        # Show context usage stats
-        tokens, percentage = self._get_context_usage()
-        summary_parts.append(f"Context usage: {tokens:,} tokens ({percentage:.1%} of budget)")
-
-        if self._summarized_message_count > 0:
-            summary_parts.append(f"Summarized messages: {self._summarized_message_count}")
-
-        summary_parts.append(f"Active messages: {len(self.conversation_history)}")
-        summary_parts.append("")
-
-        # Show recent messages
-        for msg in self.conversation_history[-10:]:  # Last 10 messages
-            role = msg["role"].capitalize()
-            content = msg["content"]
-            if isinstance(content, str):
-                preview = content[:100] + "..." if len(content) > 100 else content
-                summary_parts.append(f"{role}: {preview}")
-            elif isinstance(content, list):
-                # Tool use or tool result
-                types = [c.get("type", "unknown") for c in content]
-                summary_parts.append(f"{role}: [{', '.join(types)}]")
-
-        return "\n".join(summary_parts)
-
-    def get_context_stats(self) -> dict[str, Any]:
-        """Get detailed context window statistics."""
-        tokens, percentage = self._get_context_usage()
-        return {
-            "tokens_used": tokens,
-            "token_budget": self.context_budget,
-            "usage_percentage": percentage,
-            "active_messages": len(self.conversation_history),
-            "summarized_messages": self._summarized_message_count,
-            "has_summary": self._conversation_summary is not None,
-            "summarize_threshold": self.summarize_threshold,
-            "min_recent_messages": self.min_recent_messages,
-        }
-
-    def get_circuit_breaker_stats(self) -> dict[str, Any]:
-        """Get circuit breaker statistics for monitoring."""
-        return self._circuit_breaker.get_stats()
-
-    def reset_circuit_breaker(self) -> None:
-        """Reset the circuit breaker to closed state."""
-        self._circuit_breaker.reset()
-        logger.info("Circuit breaker reset to closed state")

@@ -3,10 +3,26 @@
 # or ~/.config/aios/config.toml for user settings
 
 [api]
-# Your Anthropic API key (required)
+# LLM provider: anthropic, openai, or lm_studio
+provider = "anthropic"
+
+# === Anthropic Settings ===
+# Your Anthropic API key (required for anthropic provider)
 # api_key = "sk-ant-..."
 
-# Model to use
+# === OpenAI Settings ===
+# Your OpenAI API key (required for openai provider)
+# openai_api_key = "sk-..."
+
+# OpenAI base URL - set for LM Studio or other OpenAI-compatible APIs
+# For LM Studio: "http://localhost:1234/v1"
+# openai_base_url = "http://localhost:1234/v1"
+
+# === Model Settings ===
+# Model to use (provider-specific)
+# Anthropic: claude-sonnet-4-5-20250929, claude-opus-4-20250514, claude-haiku-4-5
+# OpenAI: gpt-5.2, gpt-5.2-pro, gpt-5.2-codex, gpt-5-mini, gpt-5-nano
+# LM Studio: Qwen/Qwen2.5-Coder-7B-Instruct-GGUF (or any loaded model)
 model = "claude-sonnet-4-5-20250929"
 
 # Maximum tokens per response

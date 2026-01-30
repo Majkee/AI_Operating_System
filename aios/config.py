@@ -22,7 +22,23 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class APIConfig(BaseModel):
     """API configuration."""
+    # Provider selection
+    provider: str = Field(
+        default="anthropic",
+        description="LLM provider: anthropic, openai, or lm_studio"
+    )
+
+    # Anthropic settings
     api_key: Optional[str] = Field(default=None, description="Anthropic API key")
+
+    # OpenAI settings
+    openai_api_key: Optional[str] = Field(default=None, description="OpenAI API key")
+    openai_base_url: Optional[str] = Field(
+        default=None,
+        description="OpenAI base URL (for LM Studio or custom endpoints)"
+    )
+
+    # Common settings
     model: str = Field(default="claude-sonnet-4-5-20250929", description="Model to use")
     max_tokens: int = Field(default=4096, description="Max tokens per response")
     streaming: bool = Field(default=True, description="Stream responses word-by-word")
@@ -183,10 +199,25 @@ def load_env_overrides() -> dict[str, Any]:
     """Load configuration overrides from environment variables."""
     overrides: dict[str, Any] = {}
 
-    # API key from environment
+    # API key from environment (Anthropic)
     api_key = os.environ.get("AIOS_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
     if api_key:
         overrides.setdefault("api", {})["api_key"] = api_key
+
+    # OpenAI API key
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    if openai_key:
+        overrides.setdefault("api", {})["openai_api_key"] = openai_key
+
+    # Provider selection
+    provider = os.environ.get("AIOS_PROVIDER")
+    if provider:
+        overrides.setdefault("api", {})["provider"] = provider
+
+    # OpenAI base URL (for LM Studio or custom endpoints)
+    base_url = os.environ.get("AIOS_OPENAI_BASE_URL")
+    if base_url:
+        overrides.setdefault("api", {})["openai_base_url"] = base_url
 
     # Model override
     model = os.environ.get("AIOS_MODEL")

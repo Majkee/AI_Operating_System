@@ -308,13 +308,12 @@ def run_setup():
 def run_single_command(command: str) -> int:
     """Run a single command and exit."""
     from .shell import AIOSShell
+    from .providers import create_client
 
     shell = AIOSShell()
 
     try:
-        shell.claude = __import__("aios.claude.client", fromlist=["ClaudeClient"]).ClaudeClient(
-            shell.tool_handler
-        )
+        shell.client = create_client(shell.tool_handler)
     except ValueError as e:
         shell.ui.print_error(str(e))
         return 1

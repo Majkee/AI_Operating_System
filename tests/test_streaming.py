@@ -4,17 +4,18 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch
 
 from aios.config import APIConfig
-from aios.claude.client import ClaudeClient, AssistantResponse, SYSTEM_PROMPT
+from aios.providers.anthropic_client import AnthropicClient, SYSTEM_PROMPT
+from aios.providers.base import AssistantResponse
 from aios.ui.terminal import StreamingResponseHandler
 
 
 class TestClaudeClientHelpers:
-    """Test helper methods in ClaudeClient."""
+    """Test helper methods in AnthropicClient."""
 
     def test_build_system_prompt_without_context(self):
         """Test _build_system_prompt returns base prompt when no context."""
-        with patch.object(ClaudeClient, '__init__', lambda x, y=None: None):
-            client = ClaudeClient()
+        with patch.object(AnthropicClient, '__init__', lambda x, y=None: None):
+            client = AnthropicClient()
             client.tool_handler = Mock()
             client._conversation_summary = None  # Required for new context management
             result = client._build_system_prompt()
@@ -22,8 +23,8 @@ class TestClaudeClientHelpers:
 
     def test_build_system_prompt_with_context(self):
         """Test _build_system_prompt appends context."""
-        with patch.object(ClaudeClient, '__init__', lambda x, y=None: None):
-            client = ClaudeClient()
+        with patch.object(AnthropicClient, '__init__', lambda x, y=None: None):
+            client = AnthropicClient()
             client.tool_handler = Mock()
             client._conversation_summary = None  # Required for new context management
             context = "User is on Debian 12"
@@ -34,8 +35,8 @@ class TestClaudeClientHelpers:
 
     def test_store_assistant_history_text_only(self):
         """Test _store_assistant_history with text-only response."""
-        with patch.object(ClaudeClient, '__init__', lambda x, y=None: None):
-            client = ClaudeClient()
+        with patch.object(AnthropicClient, '__init__', lambda x, y=None: None):
+            client = AnthropicClient()
             client.conversation_history = []
 
             response = AssistantResponse(
@@ -54,8 +55,8 @@ class TestClaudeClientHelpers:
 
     def test_store_assistant_history_tool_calls(self):
         """Test _store_assistant_history with tool calls."""
-        with patch.object(ClaudeClient, '__init__', lambda x, y=None: None):
-            client = ClaudeClient()
+        with patch.object(AnthropicClient, '__init__', lambda x, y=None: None):
+            client = AnthropicClient()
             client.conversation_history = []
 
             response = AssistantResponse(
@@ -76,8 +77,8 @@ class TestClaudeClientHelpers:
 
     def test_store_assistant_history_mixed(self):
         """Test _store_assistant_history with text and tool calls."""
-        with patch.object(ClaudeClient, '__init__', lambda x, y=None: None):
-            client = ClaudeClient()
+        with patch.object(AnthropicClient, '__init__', lambda x, y=None: None):
+            client = AnthropicClient()
             client.conversation_history = []
 
             response = AssistantResponse(
@@ -208,8 +209,8 @@ class TestAPIConfigStreaming:
 class TestSendMessageStreaming:
     """Test send_message with streaming parameter."""
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_send_message_no_on_text_uses_create(self, mock_anthropic_class, mock_get_config):
         """Test send_message without on_text uses messages.create."""
         mock_config = Mock()
@@ -228,15 +229,15 @@ class TestSendMessageStreaming:
         mock_response.stop_reason = "end_turn"
         mock_client.messages.create.return_value = mock_response
 
-        client = ClaudeClient()
+        client = AnthropicClient()
         client.send_message("Hello")
 
         # Should use create, not stream
         mock_client.messages.create.assert_called_once()
         mock_client.messages.stream.assert_not_called()
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_send_message_with_on_text_uses_stream(self, mock_anthropic_class, mock_get_config):
         """Test send_message with on_text uses messages.stream."""
         mock_config = Mock()
@@ -262,7 +263,7 @@ class TestSendMessageStreaming:
         mock_stream.get_final_message.return_value = mock_final
         mock_client.messages.stream.return_value = mock_stream
 
-        client = ClaudeClient()
+        client = AnthropicClient()
         callback = Mock()
         client.send_message("Hello", on_text=callback)
 
@@ -279,8 +280,8 @@ class TestSendMessageStreaming:
 class TestSendToolResultsStreaming:
     """Test send_tool_results with streaming parameter."""
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_send_tool_results_no_on_text_uses_create(self, mock_anthropic_class, mock_get_config):
         """Test send_tool_results without on_text uses messages.create."""
         mock_config = Mock()
@@ -299,7 +300,7 @@ class TestSendToolResultsStreaming:
         mock_response.stop_reason = "end_turn"
         mock_client.messages.create.return_value = mock_response
 
-        client = ClaudeClient()
+        client = AnthropicClient()
         tool_results = [{"tool_use_id": "1", "content": "done"}]
         client.send_tool_results(tool_results)
 
@@ -307,8 +308,8 @@ class TestSendToolResultsStreaming:
         mock_client.messages.create.assert_called_once()
         mock_client.messages.stream.assert_not_called()
 
-    @patch('aios.claude.client.get_config')
-    @patch('aios.claude.client.anthropic.Anthropic')
+    @patch('aios.providers.anthropic_client.get_config')
+    @patch('aios.providers.anthropic_client.anthropic.Anthropic')
     def test_send_tool_results_with_on_text_uses_stream(self, mock_anthropic_class, mock_get_config):
         """Test send_tool_results with on_text uses messages.stream."""
         mock_config = Mock()
@@ -334,7 +335,7 @@ class TestSendToolResultsStreaming:
         mock_stream.get_final_message.return_value = mock_final
         mock_client.messages.stream.return_value = mock_stream
 
-        client = ClaudeClient()
+        client = AnthropicClient()
         callback = Mock()
         tool_results = [{"tool_use_id": "1", "content": "done"}]
         client.send_tool_results(tool_results, on_text=callback)
