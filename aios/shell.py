@@ -16,6 +16,8 @@ from prompt_toolkit.history import FileHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.filters import Condition
+from prompt_toolkit.formatted_text import HTML
+from prompt_toolkit.styles import Style as PTStyle
 
 from .ui.completions import AIOSCompleter, create_bottom_toolbar
 from .tasks import TaskManager, TaskStatus
@@ -250,6 +252,16 @@ class AIOSShell:
         def is_multiline():
             return self._multiline_mode
 
+        # Style for user input area - Claude Code inspired
+        self._prompt_style = PTStyle.from_dict({
+            # Prompt text style
+            'prompt': 'bold #00d7ff',  # Cyan bold for "You:"
+            # Input text on slightly different background
+            '': 'bg:#1a1a2e',  # Dark blue-ish background for input
+            # Continuation prompt
+            'continuation': '#666666',
+        })
+
         self._prompt_session = PromptSession(
             history=self.history,
             auto_suggest=AutoSuggestFromHistory(),
@@ -258,7 +270,8 @@ class AIOSShell:
             key_bindings=self._key_bindings,
             enable_history_search=True,  # Ctrl+R reverse search
             multiline=is_multiline,  # Dynamic multi-line based on mode
-            prompt_continuation='... ',  # Continuation prompt for multi-line
+            prompt_continuation=HTML('<continuation>... </continuation>'),
+            style=self._prompt_style,
         )
 
     def _register_tools(self) -> None:
@@ -843,9 +856,12 @@ class AIOSShell:
                     )
                     done_task.mark_notified()
 
-                # Get user input
+                # Print separator line before prompt (Claude Code style)
+                self.ui.print_separator()
+
+                # Get user input with styled prompt
                 user_input = self._prompt_session.prompt(
-                    "You: ",
+                    HTML('<prompt>You: </prompt>'),
                     bottom_toolbar=create_bottom_toolbar(
                         self._prompt_session, self.task_manager
                     ),

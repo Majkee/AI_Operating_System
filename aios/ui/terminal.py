@@ -452,6 +452,21 @@ class TerminalUI:
         """Print the input prompt."""
         self.console.print("[bold cyan]You:[/bold cyan] ", end="")
 
+    def print_user_message(self, message: str) -> None:
+        """Print the user's message with styled background (Claude Code style)."""
+        # Create a panel-like display for the user's message
+        self.console.print()
+        # Use a subtle background to distinguish user input
+        self.console.print(
+            Text(f" {message} ", style="on #1a1a2e"),
+            style="bold white"
+        )
+        self.console.print()
+
+    def print_separator(self) -> None:
+        """Print a screen-wide separator line."""
+        self.console.print("─" * self.console.width, style="dim blue")
+
     def print_response(self, text: str) -> None:
         """Print an assistant response."""
         self.console.print()
