@@ -7,10 +7,60 @@ Handles conversion between Anthropic and OpenAI tool formats:
 
 For GPT-5.2+, strict mode is enabled by default to ensure function calls
 reliably adhere to the function schema.
+
+IMPORTANT: OpenAI strict mode requirements:
+1. ALL properties must be listed in "required" array
+2. additionalProperties must be false
+3. Optional params must use ["type", "null"] union instead of being omitted from required
 """
 
+import copy
 import json
 from typing import Any
+
+
+def _make_schema_strict_compatible(schema: dict[str, Any]) -> dict[str, Any]:
+    """Convert a schema to be OpenAI strict mode compatible.
+
+    OpenAI strict mode requires:
+    - ALL properties must be in the 'required' array
+    - additionalProperties must be false
+    - For optional params, use type union with null: ["string", "null"]
+
+    Args:
+        schema: Original JSON schema
+
+    Returns:
+        Strict-mode compatible schema
+    """
+    # Deep copy to avoid mutating original
+    schema = copy.deepcopy(schema)
+
+    properties = schema.get("properties", {})
+    original_required = set(schema.get("required", []))
+
+    # Make all properties required
+    all_property_names = list(properties.keys())
+    schema["required"] = all_property_names
+
+    # For properties that weren't originally required, make them nullable
+    for prop_name, prop_schema in properties.items():
+        if prop_name not in original_required:
+            # Make the type nullable by using union with null
+            current_type = prop_schema.get("type")
+            if current_type and current_type != "null":
+                if isinstance(current_type, list):
+                    # Already a list, add null if not present
+                    if "null" not in current_type:
+                        prop_schema["type"] = current_type + ["null"]
+                else:
+                    # Single type, convert to list with null
+                    prop_schema["type"] = [current_type, "null"]
+
+    # Ensure additionalProperties is false
+    schema["additionalProperties"] = False
+
+    return schema
 
 
 def convert_tools_for_openai(
@@ -28,18 +78,22 @@ def convert_tools_for_openai(
     """
     converted = []
     for tool in anthropic_tools:
+        # Deep copy input_schema to avoid mutating original
+        parameters = copy.deepcopy(tool["input_schema"])
+
+        # Apply strict mode transformations if enabled
+        if strict:
+            parameters = _make_schema_strict_compatible(parameters)
+
         tool_def = {
             "type": "function",
             "name": tool["name"],
             "description": tool["description"],
-            "parameters": tool["input_schema"],
+            "parameters": parameters,
         }
-        # Enable strict mode for reliable schema adherence
+
         if strict:
             tool_def["strict"] = True
-            # Ensure additionalProperties is false for strict mode
-            if "additionalProperties" not in tool_def["parameters"]:
-                tool_def["parameters"]["additionalProperties"] = False
 
         converted.append(tool_def)
 
