@@ -56,7 +56,7 @@ from .ratelimit import (
 
 # Import refactored modules
 from .handlers import CommandHandler, FileToolHandler, SystemHandler, AppHandler, LinuxToolsHandler
-from .commands import DisplayCommands, ConfigCommands, SessionCommands, CodeCommands, WidgetCommands
+from .commands import DisplayCommands, ConfigCommands, SessionCommands, CodeCommands, WidgetCommands, PromptsCommands
 from .widgets import get_widget_manager
 
 
@@ -212,6 +212,10 @@ class AIOSShell:
         self.widget_cmds = WidgetCommands(
             ui=self.ui,
             widget_manager=self.widget_manager,
+        )
+
+        self.prompts_cmds = PromptsCommands(
+            ui=self.ui,
         )
 
     def _setup_prompt_session(self) -> None:
@@ -654,6 +658,16 @@ class AIOSShell:
         if lower_input.startswith("widgets ") or lower_input.startswith("/widgets "):
             args = user_input.split(" ", 1)[1].strip()
             self.widget_cmds.handle_widgets(args)
+            return True
+
+        # Prompts commands (power user feature)
+        if lower_input in ("prompts", "/prompts"):
+            self.prompts_cmds.handle_prompts()
+            return True
+
+        if lower_input.startswith("prompts ") or lower_input.startswith("/prompts "):
+            args = user_input.split(" ", 1)[1].strip()
+            self.prompts_cmds.handle_prompts(args)
             return True
 
         if not user_input.strip():

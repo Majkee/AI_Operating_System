@@ -148,6 +148,12 @@ COMMAND_REGISTRY = [
         "help": "Manage welcome screen widgets (list, enable, disable, create)",
         "has_arg": True,
     },
+    {
+        "name": "prompts",
+        "aliases": ["/prompts"],
+        "help": "View and customize system prompts (power user feature)",
+        "has_arg": True,
+    },
 ]
 
 

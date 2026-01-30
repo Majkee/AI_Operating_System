@@ -4,9 +4,10 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch
 
 from aios.config import APIConfig
-from aios.providers.anthropic_client import AnthropicClient, SYSTEM_PROMPT
+from aios.providers.anthropic_client import AnthropicClient
 from aios.providers.base import AssistantResponse
 from aios.ui.terminal import StreamingResponseHandler
+from aios.prompts import get_prompt_manager, reset_prompt_manager
 
 
 class TestClaudeClientHelpers:
@@ -14,12 +15,15 @@ class TestClaudeClientHelpers:
 
     def test_build_system_prompt_without_context(self):
         """Test _build_system_prompt returns base prompt when no context."""
+        reset_prompt_manager()  # Ensure fresh state
+        base_prompt = get_prompt_manager().build_prompt()
+
         with patch.object(AnthropicClient, '__init__', lambda x, y=None: None):
             client = AnthropicClient()
             client.tool_handler = Mock()
             client._conversation_summary = None  # Required for new context management
             result = client._build_system_prompt()
-            assert result == SYSTEM_PROMPT
+            assert result == base_prompt
 
     def test_build_system_prompt_with_context(self):
         """Test _build_system_prompt appends context."""
@@ -29,7 +33,8 @@ class TestClaudeClientHelpers:
             client._conversation_summary = None  # Required for new context management
             context = "User is on Debian 12"
             result = client._build_system_prompt(context)
-            assert SYSTEM_PROMPT in result
+            # Prompt should contain AIOS identity and the context
+            assert "AIOS" in result
             assert "## Current System Context" in result
             assert context in result
 

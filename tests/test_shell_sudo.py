@@ -293,15 +293,21 @@ class TestSystemPrompt:
     """System prompt should contain the new guidance sections."""
 
     def test_prompt_mentions_sudo(self):
-        from aios.claude.client import SYSTEM_PROMPT
-        assert "use_sudo" in SYSTEM_PROMPT
-        assert "passwordless sudo" in SYSTEM_PROMPT
+        from aios.prompts import get_prompt_manager, reset_prompt_manager
+        reset_prompt_manager()
+        prompt = get_prompt_manager().build_prompt()
+        assert "use_sudo" in prompt
+        assert "passwordless sudo" in prompt
 
     def test_prompt_mentions_timeout(self):
-        from aios.claude.client import SYSTEM_PROMPT
-        assert "timeout" in SYSTEM_PROMPT.lower()
-        assert "3600" in SYSTEM_PROMPT
+        from aios.prompts import get_prompt_manager, reset_prompt_manager
+        reset_prompt_manager()
+        prompt = get_prompt_manager().build_prompt()
+        assert "timeout" in prompt.lower()
+        assert "3600" in prompt
 
     def test_prompt_mentions_long_running(self):
-        from aios.claude.client import SYSTEM_PROMPT
-        assert "long_running" in SYSTEM_PROMPT
+        from aios.prompts import get_prompt_manager, reset_prompt_manager
+        reset_prompt_manager()
+        prompt = get_prompt_manager().build_prompt()
+        assert "long_running" in prompt

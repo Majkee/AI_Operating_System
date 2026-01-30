@@ -138,3 +138,25 @@ auto_detect_sensitivity = "moderate"
 #   datetime       - Current date and time
 #   swap           - Swap memory usage
 enabled = ["cpu_memory", "uptime", "disk"]
+
+[prompts]
+# Disabled prompt sections (power user feature)
+# WARNING: Modifying prompts may break expected behavior or safety features.
+# Only disable sections if you understand the implications.
+#
+# Available sections:
+#   role           - Core role definition (AIOS identity)
+#   communication  - Communication style guidelines
+#   safety         - Safety-first behavior rules
+#   tools          - Tool usage guidelines
+#   errors         - Error handling behavior
+#   user_decisions - Respecting user decisions (declining actions)
+#   privacy        - Privacy and security guidelines
+#   context        - System context and capabilities
+#   sudo           - Sudo and privilege handling
+#   timeouts       - Timeout and long-running operation handling
+#   background     - Background task behavior
+#   claude_code    - Claude Code integration guidance
+#
+# Example: disabled_sections = ["background", "claude_code"]
+disabled_sections = []

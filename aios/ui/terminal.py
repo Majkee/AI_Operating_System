@@ -740,6 +740,14 @@ Just talk to me naturally! Here are some things you can ask:
 - **config** - Interactive settings menu
 - **model** - List available AI models
 - **model <id>** - Switch to a different model
+- **widgets** - Manage welcome screen widgets
+
+## Power User
+
+- **prompts** - View and customize system prompts (advanced)
+- **prompts sections** - List all prompt sections with enabled/disabled status
+- **prompts enable/disable <key>** - Toggle prompt sections
+- **prompts reset** - Reset to default prompts
 
 ## Skill Commands
 

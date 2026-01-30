@@ -6,5 +6,5 @@ Designed for non-technical users to interact with their computer
 through conversation.
 """
 
-__version__ = "0.11.0"
+__version__ = "0.14.1"
 __author__ = "AIOS Team"

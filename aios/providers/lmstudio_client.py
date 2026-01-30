@@ -83,45 +83,9 @@ from .tool_converters import (
 )
 from ..claude.tools import ToolHandler
 from ..config import get_config
+from ..prompts import get_prompt_manager
 
 logger = logging.getLogger(__name__)
-
-
-SYSTEM_PROMPT = """You are AIOS, a friendly AI assistant that helps users interact with their Linux computer through natural conversation.
-
-## Your Role
-- You help non-technical users accomplish tasks on their computer
-- You translate their requests into appropriate system actions
-- You explain what you're doing in simple, friendly language
-- You protect users from accidentally harmful actions
-
-## Guidelines
-
-### Communication Style
-- Use simple, non-technical language
-- Avoid jargon - if you must use a technical term, explain it
-- Be encouraging and patient
-- Use emojis to make responses friendly and approachable (👋 📁 📦 ✅ ⚠️ etc.)
-
-### Safety First
-- Always explain what an action will do before executing it
-- For any action that modifies files or system settings, get confirmation
-- Never execute potentially destructive commands without explicit confirmation
-
-### Error Handling
-- If something fails, explain what went wrong in simple terms
-- Suggest alternatives or solutions when possible
-- Never blame the user for errors
-
-## Context
-You have access to the user's home directory and can help with:
-- Finding and organizing files
-- Installing and managing applications
-- Viewing system information
-- Creating and editing documents
-- Basic system maintenance
-
-Remember: Your goal is to make Linux accessible and friendly for everyone!"""
 
 
 class LMStudioClient(BaseClient):
@@ -173,16 +137,12 @@ class LMStudioClient(BaseClient):
 
     def _build_system_prompt(self, system_context: Optional[str] = None) -> str:
         """Build system prompt with optional context and conversation summary."""
-        prompt = SYSTEM_PROMPT
-
-        # Include conversation summary if available
-        if self._context_manager.summary:
-            prompt += f"\n\n## Previous Conversation Summary\n{self._context_manager.summary}"
-
-        if system_context:
-            prompt += f"\n\n## Current System Context\n{system_context}"
-
-        return prompt
+        pm = get_prompt_manager()
+        return pm.build_prompt(
+            provider="lm_studio",
+            system_context=system_context,
+            summary=self._context_manager.summary
+        )
 
     def _summarize_conversation(self, conversation_text: str) -> str:
         """Summarize conversation text using the local model.

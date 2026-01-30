@@ -22,6 +22,7 @@ __all__ = [
     "get_default_model_for_provider",
     "is_gpt5_model",
     "is_reasoning_model",
+    "is_small_model",
     "supports_verbosity",
 ]
 
@@ -36,6 +37,7 @@ class ModelInfo:
     cost: str  # "low", "medium", "high", "free"
     use_cases: list[str] = field(default_factory=list)
     provider: str = "anthropic"  # "anthropic", "openai", "lm_studio"
+    note: Optional[str] = None  # Warning or note about model limitations
 
 
 # Available Anthropic Claude models
@@ -141,7 +143,8 @@ OPENAI_MODELS: list[ModelInfo] = [
             "Quick reasoning tasks",
             "Cost-sensitive applications",
             "Balanced performance"
-        ]
+        ],
+        note="⚠️ Smaller model - may not use tools reliably (no progress bars, simplified confirmations)"
     ),
     ModelInfo(
         id="gpt-5-nano",
@@ -155,7 +158,8 @@ OPENAI_MODELS: list[ModelInfo] = [
             "Classification",
             "High volume requests",
             "Low latency needs"
-        ]
+        ],
+        note="⚠️ Smallest model - limited tool usage, best for simple Q&A only"
     ),
     # Legacy models (still supported)
     ModelInfo(
@@ -184,7 +188,8 @@ OPENAI_MODELS: list[ModelInfo] = [
             "Quick tasks",
             "Cost-sensitive applications",
             "Balanced performance"
-        ]
+        ],
+        note="⚠️ Smaller model - may not use tools reliably (no progress bars, simplified confirmations)"
     ),
 ]
 
@@ -202,7 +207,8 @@ LM_STUDIO_MODELS: list[ModelInfo] = [
             "Offline use",
             "Code assistance",
             "Privacy-focused tasks"
-        ]
+        ],
+        note="⚠️ Local model - limited tool usage, may not follow AIOS workflows correctly"
     ),
     ModelInfo(
         id="lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF",
@@ -216,7 +222,8 @@ LM_STUDIO_MODELS: list[ModelInfo] = [
             "Local/private use",
             "Offline assistance",
             "Privacy-focused tasks"
-        ]
+        ],
+        note="⚠️ Local model - limited tool usage, may not follow AIOS workflows correctly"
     ),
 ]
 
@@ -321,3 +328,26 @@ def supports_verbosity(model_id: str) -> bool:
         True if this model supports verbosity
     """
     return model_id.startswith("gpt-5")
+
+
+def is_small_model(model_id: str) -> bool:
+    """Check if this is a smaller model with limited tool usage capabilities.
+
+    Smaller models may not reliably:
+    - Use tools when they should (outputting text instead)
+    - Set optional parameters like long_running, requires_confirmation
+    - Follow complex multi-step workflows
+
+    Args:
+        model_id: The model ID to check
+
+    Returns:
+        True if this model has known limitations for AIOS workflows
+    """
+    model = get_model_by_id(model_id)
+    if model and model.note:
+        return True
+    # Also check by pattern for unknown models
+    small_patterns = ["mini", "nano", "small", "tiny", "7b", "8b", "3b"]
+    model_lower = model_id.lower()
+    return any(p in model_lower for p in small_patterns)

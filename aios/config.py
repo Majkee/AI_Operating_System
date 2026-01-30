@@ -142,6 +142,14 @@ class WidgetsConfig(BaseModel):
     )
 
 
+class PromptsConfig(BaseModel):
+    """Prompts configuration for system prompts."""
+    disabled_sections: List[str] = Field(
+        default_factory=list,
+        description="List of disabled prompt section keys (power user feature)"
+    )
+
+
 class AIOSConfig(BaseModel):
     """Main AIOS configuration."""
     api: APIConfig = Field(default_factory=APIConfig)
@@ -152,6 +160,7 @@ class AIOSConfig(BaseModel):
     executor: ExecutorConfig = Field(default_factory=ExecutorConfig)
     code: CodeConfig = Field(default_factory=CodeConfig)
     widgets: WidgetsConfig = Field(default_factory=WidgetsConfig)
+    prompts: PromptsConfig = Field(default_factory=PromptsConfig)
 
 
 def get_config_paths() -> list[Path]:

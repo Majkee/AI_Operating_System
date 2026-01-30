@@ -350,9 +350,11 @@ class TestSystemPrompt:
     """Test that the system prompt mentions background tasks."""
 
     def test_system_prompt_mentions_background(self):
-        from aios.claude.client import SYSTEM_PROMPT
-        assert "background" in SYSTEM_PROMPT.lower()
-        assert "Ctrl+B" in SYSTEM_PROMPT
+        from aios.prompts import get_prompt_manager, reset_prompt_manager
+        reset_prompt_manager()
+        prompt = get_prompt_manager().build_prompt()
+        assert "background" in prompt.lower()
+        assert "Ctrl+B" in prompt
 
 
 # ===========================================================================

@@ -1,4 +1,4 @@
-# AIOS v0.10.3 Manual Test Checklist
+# AIOS v0.14.0 Manual Test Checklist
 
 Run these tests to verify all features work end-to-end.
 Mark each test with `[x]` when passed or `[!]` if failed.
@@ -665,9 +665,49 @@ docker compose exec aios bash -c "cd /app && pip install pytest pytest-cov pytes
 pytest tests/ -v
 ```
 
-- [ ] **20.1** All 608 tests pass
+- [ ] **20.1** All 623 tests pass
 - [ ] **20.2** No test failures or errors
 - [ ] **20.3** Skipped tests are only platform-specific (Windows vs Linux)
+
+---
+
+## 21. Prompts Command (Power User)
+
+### Viewing Prompts
+
+- [ ] **21.1** Type `prompts` or `/prompts` -- should display full system prompt in syntax-highlighted panel
+- [ ] **21.2** Type `prompts sections` -- should show table with all prompt sections (key, title, enabled status)
+- [ ] **21.3** Type `prompts view role` -- should display just the "role" section content
+- [ ] **21.4** Type `prompts view nonexistent` -- should show "Section 'nonexistent' not found" error
+- [ ] **21.5** Type `prompts help` -- should display help with all subcommands
+
+### Modifying Prompts (Power User Warning)
+
+- [ ] **21.6** Type `prompts disable safety` -- should show POWER USER WARNING panel with confirmation prompt
+- [ ] **21.7** Enter `n` at confirmation -- should cancel and show "Cancelled"
+- [ ] **21.8** Type `prompts disable safety` again, enter `y` -- should disable section and show success
+- [ ] **21.9** Type `prompts sections` -- "safety" section should now show "Disabled" (red)
+- [ ] **21.10** Type `prompts enable safety` with confirmation -- should re-enable section
+- [ ] **21.11** Type `prompts sections` -- "safety" section should show "Enabled" (green)
+
+### Config Persistence
+
+- [ ] **21.12** After disabling a section, check `~/.config/aios/config.toml` -- should have `disabled_sections = ["safety"]` under `[prompts]`
+- [ ] **21.13** Restart AIOS -- disabled sections should remain disabled
+- [ ] **21.14** Type `prompts reset` with confirmation -- should restore all defaults
+- [ ] **21.15** Check config file -- `disabled_sections` should be empty
+
+### Provider Integration
+
+- [ ] **21.16** With AIOS_PROVIDER=anthropic, `prompts` shows unified prompt
+- [ ] **21.17** With AIOS_PROVIDER=openai, `prompts` shows same unified prompt structure
+- [ ] **21.18** With AIOS_PROVIDER=lmstudio, `prompts` shows same unified prompt structure
+
+### Help and Completion
+
+- [ ] **21.19** Type `help` -- should include "Power User" section with prompts commands
+- [ ] **21.20** Type `prom` and press Tab -- should complete to `prompts`
+- [ ] **21.21** Double-tap Tab on empty input -- should show `prompts` in command list
 
 ---
 
@@ -695,13 +735,14 @@ pytest tests/ -v
 | Audit Logging | 4 | | |
 | Docker-Specific | 6 | | |
 | Automated Tests | 3 | | |
-| **Total** | **211** | | |
+| Prompts Command | 21 | | |
+| **Total** | **232** | | |
 
 ---
 
 **Tester**: _______________
 **Date**: _______________
-**Version**: 0.10.3
+**Version**: 0.14.0
 **Environment**: Docker / Local (circle one)
 **OS**: _______________
 **Python**: _______________

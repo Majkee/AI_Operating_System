@@ -306,22 +306,43 @@ class ConfigCommands:
         table.add_column("Cost", width=10)
         table.add_column("Status", width=12)
 
+        models_with_notes = []
+
         for idx, model in enumerate(AVAILABLE_MODELS, 1):
             speed_emoji = "⚡" if model.speed == "fast" else "⏱️" if model.speed == "medium" else "🐌"
             cost_emoji = "💰" if model.cost == "low" else "💵" if model.cost == "medium" else "💸"
             is_current = model.id == current_model_id
             status = "[green]● Current[/green]" if is_current else "[dim]Available[/dim]"
 
+            # Add marker for models with limitations
+            name_display = model.name
+            if model.note:
+                name_display = f"{model.name} [yellow]*[/yellow]"
+                models_with_notes.append((idx, model))
+
             table.add_row(
                 str(idx),
-                model.name,
+                name_display,
                 f"{speed_emoji} {model.speed}",
                 f"{cost_emoji} {model.cost}",
                 status
             )
 
         self.ui.console.print(table)
+
+        # Show notes for models with limitations
+        if models_with_notes:
+            self.ui.console.print()
+            self.ui.console.print("[yellow]*[/yellow] [dim]These models have known limitations:[/dim]")
+            for idx, model in models_with_notes:
+                self.ui.console.print(f"  [dim]{idx}. {model.name}:[/dim] [yellow]{model.note}[/yellow]")
+
         self.ui.console.print(f"\n[bold]Current model:[/bold] [cyan]{current_model_info.name if current_model_info else current_model_id}[/cyan]")
+
+        # Show warning if current model has limitations
+        if current_model_info and current_model_info.note:
+            self.ui.console.print(f"[yellow]{current_model_info.note}[/yellow]")
+
         self.ui.console.print("[dim]To change model, use: [cyan]model <number>[/cyan] or [cyan]model <model-id>[/cyan][/dim]\n")
 
     def change_model(self, model_arg: str, client: Optional["BaseClient"] = None) -> Optional[str]:
@@ -388,6 +409,9 @@ class ConfigCommands:
         if provider_changed:
             self.ui.print_info(f"[green]✓[/green] Switched to [bold]{selected_model.name}[/bold] ({new_provider} provider)")
             self.ui.print_info("[dim]Conversation history cleared for new provider[/dim]")
+            # Show warning for models with limitations
+            if selected_model.note:
+                self.ui.console.print(f"[yellow]{selected_model.note}[/yellow]")
             self.ui.console.print()
             return new_provider
 
@@ -401,6 +425,10 @@ class ConfigCommands:
         else:
             self.ui.print_info(f"[green]✓[/green] Model set to [bold]{selected_model.name}[/bold]")
             self.ui.print_info("[dim]Model will be used when LLM client is initialized[/dim]")
+
+        # Show warning for models with limitations
+        if selected_model.note:
+            self.ui.console.print(f"[yellow]{selected_model.note}[/yellow]")
 
         self.ui.console.print()
         return None

@@ -5,6 +5,89 @@ All notable changes to AIOS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.1] - 2026-01-30
+
+### Added
+
+#### Model Capability Warnings
+Smaller models may not reliably use AIOS tools, leading to degraded user experience (no progress bars, text-based confirmations instead of proper Y/N prompts). Users are now informed of these limitations:
+
+- Added `note` field to `ModelInfo` dataclass for model-specific warnings
+- `model` command now displays warnings for models with known limitations (marked with `*`)
+- When switching to a limited model, warning is shown immediately
+- Helper function `is_small_model()` to detect models with limited capabilities
+
+**Models with warnings:**
+- GPT-5 Mini, GPT-5 Nano, GPT-4o Mini (OpenAI)
+- Qwen 2.5 Coder 7B, Llama 3.1 8B (LM Studio local models)
+
+**Example output when running `model`:**
+```
+* These models have known limitations:
+  4. GPT-5 Mini: ⚠️ Smaller model - may not use tools reliably (no progress bars, simplified confirmations)
+```
+
+### Fixed
+- Users now understand why smaller models may behave differently
+
+---
+
+## [0.14.0] - 2026-01-30
+
+### Added
+
+#### Centralized Prompt System with `/prompts` Command
+Single source of truth for all LLM provider system prompts with configurable sections and power user customization:
+
+**PromptManager (`aios/prompts.py`):**
+- `PromptSection` dataclass for configurable prompt sections
+- `PromptManager` class with methods: `build_prompt()`, `list_sections()`, `enable_section()`, `disable_section()`, `reset()`
+- 12 default sections: role, communication, safety, tools, errors, user_decisions, privacy, context, sudo, timeouts, background, claude_code
+- Global `get_prompt_manager()` and `reset_prompt_manager()` functions
+- All providers (Anthropic, OpenAI, LM Studio) now use the same centralized prompt
+
+**`/prompts` Command (`aios/commands/prompts.py`):**
+- `/prompts` - View full current system prompt
+- `/prompts view <key>` - View a specific prompt section
+- `/prompts sections` - List all sections with enabled/disabled status
+- `/prompts enable <key>` - Enable a disabled section (with confirmation)
+- `/prompts disable <key>` - Disable a section (with extra warning for critical sections)
+- `/prompts reset` - Reset all sections to defaults
+- `/prompts help` - Show detailed help
+
+**Safety Features:**
+- Power user warnings displayed before any modifications
+- Confirmation prompts required for enable/disable/reset operations
+- Extra strong warning for critical sections (role, safety, user_decisions, privacy)
+- Changes persisted to `~/.config/aios/config.toml`
+
+**Configuration (`aios/config.py`):**
+- `PromptsConfig` model with `disabled_sections` list
+- `[prompts]` section in `default.toml` with documentation of all available sections
+
+**Files Changed:**
+- `aios/prompts.py` - New central prompt management module
+- `aios/commands/prompts.py` - New `/prompts` command handler
+- `aios/commands/__init__.py` - Export `PromptsCommands`
+- `aios/config.py` - Added `PromptsConfig` model
+- `aios/data/default.toml` - Added `[prompts]` section
+- `aios/shell.py` - Register `/prompts` command
+- `aios/ui/completions.py` - Added `/prompts` to command registry
+- `aios/providers/anthropic_client.py` - Uses `PromptManager`
+- `aios/providers/openai_client.py` - Uses `PromptManager`
+- `aios/providers/lmstudio_client.py` - Uses `PromptManager`
+- `aios/claude/client.py` - Legacy `SYSTEM_PROMPT` uses `PromptManager`
+
+#### Tests
+- 28 new tests in `tests/test_prompts.py`:
+  - `TestPromptSection` (2): creation, disabled state
+  - `TestDefaultSections` (3): existence, required keys, content validation
+  - `TestPromptManager` (17): init, config, build_prompt variants, sections, enable/disable, reset, counts
+  - `TestGlobalPromptManager` (3): instance, singleton, reset
+  - `TestPromptIntegration` (3): critical sections, provider agnostic, token estimate
+
+---
+
 ## [0.10.7] - 2026-01-29
 
 ### Fixed

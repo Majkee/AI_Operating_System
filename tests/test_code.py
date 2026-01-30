@@ -336,10 +336,14 @@ class TestSystemPromptIntegration:
     """Verify system prompt includes Claude Code guidance."""
 
     def test_system_prompt_mentions_code(self):
-        from aios.claude.client import SYSTEM_PROMPT
+        from aios.prompts import get_prompt_manager, reset_prompt_manager
 
-        assert "Claude Code" in SYSTEM_PROMPT
-        assert "code" in SYSTEM_PROMPT.lower()
+        reset_prompt_manager()  # Ensure fresh state
+        pm = get_prompt_manager()
+        prompt = pm.build_prompt()
+
+        assert "Claude Code" in prompt
+        assert "code" in prompt.lower()
 
 
 # ---------------------------------------------------------------------------

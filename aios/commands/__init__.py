@@ -9,6 +9,7 @@ from .config import ConfigCommands, update_toml_value
 from .sessions import SessionCommands
 from .code import CodeCommands
 from .widgets import WidgetCommands
+from .prompts import PromptsCommands
 
 __all__ = [
     "DisplayCommands",
@@ -16,5 +17,6 @@ __all__ = [
     "SessionCommands",
     "CodeCommands",
     "WidgetCommands",
+    "PromptsCommands",
     "update_toml_value",
 ]
