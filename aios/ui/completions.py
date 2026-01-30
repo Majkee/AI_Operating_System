@@ -12,7 +12,7 @@ from typing import Callable, Iterable, List, Optional
 
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
-from prompt_toolkit.formatted_text import HTML
+from prompt_toolkit.formatted_text import HTML, FormattedText, merge_formatted_text
 
 logger = logging.getLogger(__name__)
 
@@ -364,7 +364,12 @@ def create_bottom_toolbar(prompt_session, task_manager=None, terminal_width: int
         else:
             toolbar_content = left
 
-        # Return separator line + toolbar content
-        return HTML(f'<style fg="#4444aa">{separator}</style>\n{toolbar_content}')
+        # Return separator line + toolbar content using FormattedText
+        # This ensures the separator appears on its own line above the toolbar
+        return FormattedText([
+            ('#4466aa', separator),
+            ('', '\n'),
+            ('', toolbar_content),
+        ])
 
     return _toolbar
