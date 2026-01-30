@@ -49,7 +49,19 @@ def _apply_strict_mode(schema: dict[str, Any], original_required: set[str] | Non
     Returns:
         Transformed schema
     """
+    schema_type = schema.get("type")
     properties = schema.get("properties", {})
+
+    # Check if this is an object type (either "object" or ["object", ...])
+    is_object_type = (
+        schema_type == "object" or
+        (isinstance(schema_type, list) and "object" in schema_type)
+    )
+
+    # For any object type, ensure additionalProperties is false
+    # This is required by OpenAI strict mode even for objects without explicit properties
+    if is_object_type:
+        schema["additionalProperties"] = False
 
     if properties:
         # Track which properties were originally required
@@ -74,24 +86,20 @@ def _apply_strict_mode(schema: dict[str, Any], original_required: set[str] | Non
                         # Single type, convert to list with null
                         prop_schema["type"] = [current_type, "null"]
 
-            # Recursively process nested objects
-            if prop_schema.get("type") == "object" or (
-                isinstance(prop_schema.get("type"), list) and "object" in prop_schema.get("type", [])
-            ):
+            # Recursively process nested objects (handles both "object" and ["object", "null"])
+            prop_type = prop_schema.get("type")
+            if prop_type == "object" or (isinstance(prop_type, list) and "object" in prop_type):
                 nested_required = set(prop_schema.get("required", []))
                 _apply_strict_mode(prop_schema, nested_required)
 
             # Process array items if they are objects
-            if prop_schema.get("type") == "array" or (
-                isinstance(prop_schema.get("type"), list) and "array" in prop_schema.get("type", [])
-            ):
+            if prop_type == "array" or (isinstance(prop_type, list) and "array" in prop_type):
                 items = prop_schema.get("items", {})
-                if isinstance(items, dict) and items.get("type") == "object":
-                    items_required = set(items.get("required", []))
-                    _apply_strict_mode(items, items_required)
-
-        # Ensure additionalProperties is false
-        schema["additionalProperties"] = False
+                if isinstance(items, dict):
+                    items_type = items.get("type")
+                    if items_type == "object" or (isinstance(items_type, list) and "object" in items_type):
+                        items_required = set(items.get("required", []))
+                        _apply_strict_mode(items, items_required)
 
     return schema
 
