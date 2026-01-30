@@ -28,6 +28,7 @@ from openai import (
 )
 
 from .base import BaseClient, AssistantResponse
+from .context_manager import ContextManager, create_summarization_prompt
 from ..models import is_gpt5_model, is_reasoning_model, supports_verbosity
 
 
@@ -273,8 +274,13 @@ class OpenAIClient(BaseClient):
         # Parallel tool calls configuration
         self._parallel_tool_calls: bool = config.api.parallel_tool_calls
 
-        # Simple conversation tracking
-        self._message_count: int = 0
+        # Context manager for conversation tracking and summarization
+        self._context_manager = ContextManager(
+            summarize_fn=self._summarize_conversation,
+            context_budget=getattr(config.api, 'context_budget', 150000),
+            summarize_threshold=getattr(config.api, 'summarize_threshold', 0.75),
+            min_recent_messages=getattr(config.api, 'min_recent_messages', 6),
+        )
 
     def set_reasoning_effort(
         self,
@@ -344,6 +350,45 @@ class OpenAIClient(BaseClient):
         """Check if current model supports verbosity parameter."""
         return supports_verbosity(self.model)
 
+    def _summarize_conversation(self, conversation_text: str) -> str:
+        """Summarize conversation text using the OpenAI model.
+
+        This is called by the ContextManager when summarization is needed.
+
+        Args:
+            conversation_text: Formatted conversation to summarize
+
+        Returns:
+            Summary of the conversation
+        """
+        prompt = create_summarization_prompt(conversation_text)
+
+        try:
+            # Use a simple request without response chaining for summarization
+            response = self.client.responses.create(
+                model=self.model,
+                input=[{"role": "user", "content": prompt}],
+                max_output_tokens=1000,  # Summaries should be concise
+            )
+
+            # Extract text from response
+            if hasattr(response, 'output_text') and response.output_text:
+                return response.output_text
+
+            # Fallback extraction
+            for item in response.output:
+                if hasattr(item, 'type') and item.type == "message":
+                    if hasattr(item, 'content'):
+                        for content_block in item.content:
+                            if hasattr(content_block, 'text'):
+                                return content_block.text
+
+            return "Summary generation failed."
+
+        except Exception as e:
+            logger.error(f"Failed to generate summary: {e}")
+            raise
+
     def get_model(self) -> str:
         """Get the current model ID."""
         return self.model
@@ -353,8 +398,12 @@ class OpenAIClient(BaseClient):
         self.model = model
 
     def _build_system_prompt(self, system_context: Optional[str] = None) -> str:
-        """Build system prompt with optional context."""
+        """Build system prompt with optional context and conversation summary."""
         prompt = SYSTEM_PROMPT
+
+        # Include conversation summary if available
+        if self._context_manager.summary:
+            prompt += f"\n\n## Previous Conversation Summary\n{self._context_manager.summary}"
 
         if system_context:
             prompt += f"\n\n## Current System Context\n{system_context}"
@@ -401,25 +450,46 @@ class OpenAIClient(BaseClient):
         on_text: Optional[Callable[[str], None]] = None
     ) -> AssistantResponse:
         """Send a message to OpenAI and get a response."""
+        # Track user message in context manager
+        self._context_manager.add_message("user", user_input)
+
+        # Check if summarization is needed before making the request
+        if self._context_manager.check_and_summarize():
+            # If we summarized, break the response chain to start fresh
+            # The summary is now included in the system prompt
+            self._last_response_id = None
+            logger.info("Context summarized, starting new response chain")
+
         self._instructions = self._build_system_prompt(system_context)
         tools = convert_tools_for_openai(self.tool_handler.get_all_tools())
 
         # Build input - user message
         input_items = [{"role": "user", "content": user_input}]
 
-        self._message_count += 1
-
         try:
             if on_text:  # Streaming
-                return self._stream_request(input_items, tools, on_text)
+                response = self._stream_request(input_items, tools, on_text)
             else:
                 params = self._build_request_params(input_items, tools)
                 response = self.client.responses.create(**params)
                 self._last_response_id = response.id
-                return self._process_response(response)
+                response = self._process_response(response)
 
-        except OpenAIError:
-            raise  # Already handled, re-raise
+            # Track assistant response in context manager
+            if response.text:
+                self._context_manager.add_message("assistant", response.text)
+
+            return response
+
+        except OpenAIError as e:
+            # Handle context length exceeded by auto-summarizing
+            if e.error_code == "CONTEXT_LENGTH_EXCEEDED":
+                logger.warning("Context length exceeded, forcing summarization...")
+                if self._context_manager.summarize():
+                    self._last_response_id = None
+                    # Retry the request
+                    return self.send_message(user_input, system_context, on_text)
+            raise  # Re-raise if not recoverable
         except (APIError, APIConnectionError, RateLimitError, AuthenticationError, BadRequestError, APITimeoutError) as e:
             logger.error(f"OpenAI API error [{type(e).__name__}]: {e}")
             raise handle_openai_error(e)
@@ -511,6 +581,14 @@ class OpenAIClient(BaseClient):
         on_text: Optional[Callable[[str], None]] = None
     ) -> AssistantResponse:
         """Send tool execution results back to OpenAI."""
+        # Track tool results in context manager
+        for result in tool_results:
+            tool_id = result.get("tool_use_id", "unknown")
+            content = result.get("content", "")
+            if isinstance(content, dict):
+                content = json.dumps(content)
+            self._context_manager.add_message("tool", content, tool_call_id=tool_id)
+
         # Build function_call_output items
         input_items = build_openai_tool_results(tool_results)
 
@@ -518,13 +596,19 @@ class OpenAIClient(BaseClient):
 
         try:
             if on_text:  # Streaming
-                return self._stream_request(input_items, tools, on_text)
+                response = self._stream_request(input_items, tools, on_text)
             else:
                 # Use previous_response_id to chain responses
                 params = self._build_request_params(input_items, tools)
                 response = self.client.responses.create(**params)
                 self._last_response_id = response.id
-                return self._process_response(response)
+                response = self._process_response(response)
+
+            # Track assistant response in context manager
+            if response.text:
+                self._context_manager.add_message("assistant", response.text)
+
+            return response
 
         except OpenAIError:
             raise  # Already handled, re-raise
@@ -538,29 +622,46 @@ class OpenAIClient(BaseClient):
     def clear_history(self) -> None:
         """Clear the conversation history."""
         self._last_response_id = None
-        self._message_count = 0
+        self._context_manager.clear()
 
     def get_history_summary(self) -> str:
         """Get a summary of the conversation history."""
-        if self._message_count == 0:
+        context_stats = self._context_manager.get_stats()
+
+        if context_stats.message_count == 0 and not context_stats.has_summary:
             return "No conversation history."
 
         parts = [
-            f"Messages in session: {self._message_count}",
-            f"Response chaining: {'Active' if self._last_response_id else 'Not started'}",
+            f"Messages: {context_stats.message_count}",
+            f"Response chaining: {'Active' if self._last_response_id else 'Not active'}",
+            f"Context usage: ~{context_stats.total_tokens:,} tokens ({context_stats.budget_used_percentage:.1%})",
         ]
+
+        if context_stats.summarized_message_count > 0:
+            parts.append(f"Summarized: {context_stats.summarized_message_count} messages")
+
+        if context_stats.has_summary:
+            parts.append("Has conversation summary: Yes")
+
         return "\n".join(parts)
 
     def get_context_stats(self) -> dict[str, Any]:
         """Get context statistics."""
+        context_stats = self._context_manager.get_stats()
+
         stats = {
-            "message_count": self._message_count,
+            "message_count": context_stats.message_count,
             "has_response_chain": self._last_response_id is not None,
             "provider": "openai",
             "model": self.model,
             "is_gpt5_model": self._is_gpt5_model(),
             "supports_reasoning": self._supports_reasoning(),
             "supports_verbosity": self._supports_verbosity(),
+            "token_usage": context_stats.total_tokens,
+            "token_budget": context_stats.token_budget,
+            "budget_used_percentage": context_stats.budget_used_percentage,
+            "summarized_messages": context_stats.summarized_message_count,
+            "has_summary": context_stats.has_summary,
         }
 
         # Add reasoning stats if supported

@@ -24,6 +24,7 @@ from openai import (
 )
 
 from .base import BaseClient, AssistantResponse
+from .context_manager import ContextManager, create_summarization_prompt
 
 
 class LMStudioError(Exception):
@@ -148,11 +149,16 @@ class LMStudioClient(BaseClient):
         self.max_tokens = config.api.max_tokens
         self.tool_handler = tool_handler or ToolHandler()
 
-        # Conversation history for multi-turn
-        self.conversation_history: list[dict] = []
-
         # Track if we've detected tool support
         self._tools_supported: Optional[bool] = None
+
+        # Context manager for conversation tracking and summarization
+        self._context_manager = ContextManager(
+            summarize_fn=self._summarize_conversation,
+            context_budget=getattr(config.api, 'context_budget', 32000),  # Local models often have smaller contexts
+            summarize_threshold=getattr(config.api, 'summarize_threshold', 0.75),
+            min_recent_messages=getattr(config.api, 'min_recent_messages', 6),
+        )
 
     def get_model(self) -> str:
         """Get the current model ID."""
@@ -165,13 +171,43 @@ class LMStudioClient(BaseClient):
         self._tools_supported = None
 
     def _build_system_prompt(self, system_context: Optional[str] = None) -> str:
-        """Build system prompt with optional context."""
+        """Build system prompt with optional context and conversation summary."""
         prompt = SYSTEM_PROMPT
+
+        # Include conversation summary if available
+        if self._context_manager.summary:
+            prompt += f"\n\n## Previous Conversation Summary\n{self._context_manager.summary}"
 
         if system_context:
             prompt += f"\n\n## Current System Context\n{system_context}"
 
         return prompt
+
+    def _summarize_conversation(self, conversation_text: str) -> str:
+        """Summarize conversation text using the local model.
+
+        This is called by the ContextManager when summarization is needed.
+
+        Args:
+            conversation_text: Formatted conversation to summarize
+
+        Returns:
+            Summary of the conversation
+        """
+        prompt = create_summarization_prompt(conversation_text)
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1000,  # Summaries should be concise
+            )
+
+            return response.choices[0].message.content or "Summary generation failed."
+
+        except Exception as e:
+            logger.error(f"Failed to generate summary with local model: {e}")
+            raise
 
     def _try_with_tools(self, messages: list[dict], system_prompt: str) -> tuple[Any, bool]:
         """Try to make a request with tool support.
@@ -209,29 +245,39 @@ class LMStudioClient(BaseClient):
         on_text: Optional[Callable[[str], None]] = None
     ) -> AssistantResponse:
         """Send a message to LM Studio and get a response."""
+        # Track user message in context manager
+        self._context_manager.add_message("user", user_input)
+
+        # Check if summarization is needed
+        self._context_manager.check_and_summarize()
+
         system_prompt = self._build_system_prompt(system_context)
 
-        # Add user message to history
-        self.conversation_history.append({"role": "user", "content": user_input})
-
-        messages = self.conversation_history.copy()
+        # Get messages from context manager (excludes summarized messages)
+        messages = self._context_manager.get_messages()
 
         try:
             if on_text:
-                return self._stream_request(messages, system_prompt, on_text)
+                response = self._stream_request(messages, system_prompt, on_text)
             else:
                 # Try with tools if we haven't determined support yet
                 if self._tools_supported is None or self._tools_supported:
-                    response, self._tools_supported = self._try_with_tools(messages, system_prompt)
+                    api_response, self._tools_supported = self._try_with_tools(messages, system_prompt)
                 else:
                     # We know tools aren't supported
-                    response = self.client.chat.completions.create(
+                    api_response = self.client.chat.completions.create(
                         model=self.model,
                         messages=[{"role": "system", "content": system_prompt}] + messages,
                         max_tokens=self.max_tokens,
                     )
 
-                return self._process_response(response.choices[0].message)
+                response = self._process_response(api_response.choices[0].message)
+
+            # Track assistant response in context manager
+            if response.text:
+                self._context_manager.add_message("assistant", response.text)
+
+            return response
 
         except LMStudioError:
             raise  # Already handled, re-raise
@@ -284,9 +330,6 @@ class LMStudioClient(BaseClient):
                                 if tc.function.arguments:
                                     tool_calls_data[tc.index]["arguments"] += tc.function.arguments
 
-            # Store assistant message in history
-            self.conversation_history.append({"role": "assistant", "content": content})
-
             # Process accumulated tool calls
             tool_calls = []
             for tc_data in tool_calls_data:
@@ -321,9 +364,6 @@ class LMStudioClient(BaseClient):
         """Process a Chat Completions response message."""
         content = message.content or ""
 
-        # Store in history
-        self.conversation_history.append({"role": "assistant", "content": content})
-
         # Extract tool calls if present
         tool_calls = []
         if hasattr(message, 'tool_calls') and message.tool_calls:
@@ -343,31 +383,41 @@ class LMStudioClient(BaseClient):
         on_text: Optional[Callable[[str], None]] = None
     ) -> AssistantResponse:
         """Send tool execution results back to LM Studio."""
-        # Build tool result messages
-        tool_messages = build_chat_completions_tool_results(tool_results)
-
-        # Add to conversation history
-        for msg in tool_messages:
-            self.conversation_history.append(msg)
+        # Track tool results in context manager
+        for result in tool_results:
+            tool_id = result.get("tool_use_id", "unknown")
+            content = result.get("content", "")
+            if isinstance(content, dict):
+                content = json.dumps(content)
+            self._context_manager.add_message("tool", content, tool_call_id=tool_id)
 
         system_prompt = self._build_system_prompt(system_context)
-        messages = self.conversation_history.copy()
+        messages = self._context_manager.get_messages()
+
+        # Build tool result messages for the API (different format)
+        tool_messages = build_chat_completions_tool_results(tool_results)
 
         try:
             if on_text:
-                return self._stream_request(messages, system_prompt, on_text)
+                response = self._stream_request(messages + tool_messages, system_prompt, on_text)
             else:
                 # Tools are required for tool results
                 tools = convert_tools_for_chat_completions(self.tool_handler.get_all_tools())
 
-                response = self.client.chat.completions.create(
+                api_response = self.client.chat.completions.create(
                     model=self.model,
-                    messages=[{"role": "system", "content": system_prompt}] + messages,
+                    messages=[{"role": "system", "content": system_prompt}] + messages + tool_messages,
                     tools=tools if tools else None,
                     max_tokens=self.max_tokens,
                 )
 
-                return self._process_response(response.choices[0].message)
+                response = self._process_response(api_response.choices[0].message)
+
+            # Track assistant response in context manager
+            if response.text:
+                self._context_manager.add_message("assistant", response.text)
+
+            return response
 
         except LMStudioError:
             raise  # Already handled, re-raise
@@ -380,33 +430,41 @@ class LMStudioClient(BaseClient):
 
     def clear_history(self) -> None:
         """Clear the conversation history."""
-        self.conversation_history = []
+        self._context_manager.clear()
 
     def get_history_summary(self) -> str:
         """Get a summary of the conversation history."""
-        if not self.conversation_history:
+        context_stats = self._context_manager.get_stats()
+
+        if context_stats.message_count == 0 and not context_stats.has_summary:
             return "No conversation history."
 
         parts = [
-            f"Messages in history: {len(self.conversation_history)}",
+            f"Messages: {context_stats.message_count}",
             f"Tool support: {'Yes' if self._tools_supported else 'No' if self._tools_supported is False else 'Unknown'}",
+            f"Context usage: ~{context_stats.total_tokens:,} tokens ({context_stats.budget_used_percentage:.1%})",
         ]
 
-        # Show recent messages
-        parts.append("")
-        for msg in self.conversation_history[-6:]:
-            role = msg["role"].capitalize()
-            content = msg.get("content", "")
-            if isinstance(content, str):
-                preview = content[:80] + "..." if len(content) > 80 else content
-                parts.append(f"{role}: {preview}")
+        if context_stats.summarized_message_count > 0:
+            parts.append(f"Summarized: {context_stats.summarized_message_count} messages")
+
+        if context_stats.has_summary:
+            parts.append("Has conversation summary: Yes")
 
         return "\n".join(parts)
 
     def get_context_stats(self) -> dict[str, Any]:
         """Get context statistics."""
+        context_stats = self._context_manager.get_stats()
+
         return {
-            "message_count": len(self.conversation_history),
+            "message_count": context_stats.message_count,
             "tools_supported": self._tools_supported,
             "provider": "lm_studio",
+            "model": self.model,
+            "token_usage": context_stats.total_tokens,
+            "token_budget": context_stats.token_budget,
+            "budget_used_percentage": context_stats.budget_used_percentage,
+            "summarized_messages": context_stats.summarized_message_count,
+            "has_summary": context_stats.has_summary,
         }

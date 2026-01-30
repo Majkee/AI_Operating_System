@@ -10,6 +10,7 @@ from .factory import create_client, get_provider_name
 from .anthropic_client import AnthropicClient
 from .openai_client import OpenAIClient, OpenAIError
 from .lmstudio_client import LMStudioClient, LMStudioError
+from .context_manager import ContextManager, ContextStats, TokenCounter, SimpleTokenCounter
 
 __all__ = [
     "BaseClient",
@@ -21,4 +22,8 @@ __all__ = [
     "OpenAIError",
     "LMStudioClient",
     "LMStudioError",
+    "ContextManager",
+    "ContextStats",
+    "TokenCounter",
+    "SimpleTokenCounter",
 ]
