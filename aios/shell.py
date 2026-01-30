@@ -859,13 +859,16 @@ class AIOSShell:
                 # Print separator line before prompt (Claude Code style)
                 self.ui.print_separator()
 
-                # Get user input with styled prompt (no bottom toolbar - cleaner look)
+                # Get user input with styled prompt
+                # Bottom toolbar includes separator line above it
                 user_input = self._prompt_session.prompt(
                     HTML('<prompt>You: </prompt>'),
+                    bottom_toolbar=create_bottom_toolbar(
+                        self._prompt_session,
+                        self.task_manager,
+                        terminal_width=self.ui.console.width
+                    ),
                 ).strip()
-
-                # Print separator line after input
-                self.ui.print_separator()
 
                 # Handle Ctrl+B sentinel
                 if user_input == '\x02':
