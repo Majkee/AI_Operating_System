@@ -867,6 +867,9 @@ class AIOSShell:
                     ),
                 ).strip()
 
+                # Print separator line after input
+                self.ui.print_separator()
+
                 # Handle Ctrl+B sentinel
                 if user_input == '\x02':
                     TaskBrowser(self.task_manager, self.ui.console).show()
